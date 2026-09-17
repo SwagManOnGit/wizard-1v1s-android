@@ -1,0 +1,56 @@
+name: Android build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - name: Build web assets
+        run: npm run build -w app
+        env:
+          VITE_SERVER_URL: ${{ vars.SERVER_URL || 'https://wizard-1v1s.fly.dev' }}
+          VITE_ADMOB_REWARDED: ${{ vars.ADMOB_REWARDED || '' }}
+          VITE_ADMOB_TESTING: ${{ vars.ADMOB_TESTING || 'true' }}
+      - name: Sync Capacitor
+        run: npx cap sync android
+        working-directory: app
+      - name: Debug APK (installable on any phone with "unknown sources" enabled)
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: app/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wizard-1v1s-debug-apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
+      # Release bundle for the Play Console. Needs the four secrets described in docs/LAUNCH-CHECKLIST.md.
+      - name: Decode keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/android/release.keystore
+      - name: Release AAB
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        run: ./gradlew bundleRelease --no-daemon
+        working-directory: app/android
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/app/android/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        with:
+          name: wizard-1v1s-release-aab
+          path: app/android/app/build/outputs/bundle/release/app-release.aab

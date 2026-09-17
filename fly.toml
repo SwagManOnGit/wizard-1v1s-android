@@ -1,0 +1,28 @@
+# Fly.io deployment for the duel server. Run from the repo root:
+#   fly launch --no-deploy   (once, accept this file)
+#   fly volumes create wizard_data --size 1
+#   fly deploy
+app = "wizard-1v1s"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "2567"
+  DATA_FILE = "/data/db.json"
+
+[[mounts]]
+  source = "wizard_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

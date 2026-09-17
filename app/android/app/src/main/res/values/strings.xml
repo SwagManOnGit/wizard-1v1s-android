@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Wizard 1v1s</string>
+    <string name="title_activity_main">Wizard 1v1s</string>
+    <string name="package_name">com.swaggames.wizard1v1s</string>
+    <string name="custom_url_scheme">com.swaggames.wizard1v1s</string>
+</resources>
