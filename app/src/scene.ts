@@ -7,7 +7,7 @@ import castleUrl from './assets/models/arena.glb';
 import forestUrl from './assets/models/forest.glb';
 import caveUrl from './assets/models/cave.glb';
 import sanctumUrl from './assets/models/sanctum.glb';
-import { ENEMY_Z, LANE_X, PLAYER_LOOK, STAGE_THEME, TIERS, enemyLook, stageForLevel, type EnemyDef, type HatStyle, type StageId, type WizardLook } from '@wizard/shared';
+import { ENEMY_Z, LANE_X, PLAYER_LOOK, STAGE_THEME, TIERS, enemyLook, stageForLevel, type EnemyDef, type HatStyle, type StaffStyle, type StageId, type WizardLook } from '@wizard/shared';
 import type { BattleEvent, Projectile } from '@wizard/shared';
 import type { BattleLike } from './duel/view';
 import { MATERIAL_TEXTURE, UNLIT_MATERIALS, texture } from './textures';
@@ -34,6 +34,7 @@ function toUnlit(src: THREE.Material): THREE.MeshBasicMaterial {
 }
 
 const HAT_NODES: Record<HatStyle, string> = { pointy: 'Hat_Pointy', hood: 'Hat_Hood', crown: 'Hat_Crown', horns: 'Hat_Horns', wide: 'Hat_Wide', turban: 'Hat_Turban' };
+const STAFF_NODES: Record<StaffStyle, string> = { claw: 'Staff_Claw', crystal: 'Staff_Crystal', ring: 'Staff_Ring', blade: 'Staff_Blade', skull: 'Staff_Skull', leaf: 'Staff_Leaf' };
 
 // ---- helpers ------------------------------------------------------------------
 function glowTexture(): THREE.Texture {
@@ -163,6 +164,7 @@ class Wizard {
   private shieldMat: THREE.MeshBasicMaterial;
   private shieldWireMat: THREE.MeshBasicMaterial;
   private hatNodes: Partial<Record<HatStyle, THREE.Object3D>> = {};
+  private staffNodes: Partial<Record<StaffStyle, THREE.Object3D>> = {};
   private beardNode: THREE.Object3D | null = null;
   private capeNode: THREE.Object3D | null = null;
   readonly orb = new THREE.Object3D();
@@ -209,6 +211,7 @@ class Wizard {
     if (orbNode) { orbNode.material = this.orbMat; this.allMats.push(this.orbMat); }
     this.staffPivot = inst.getObjectByName('ArmPivot') ?? new THREE.Group();
     for (const [style, node] of Object.entries(HAT_NODES) as [HatStyle, string][]) { const n = inst.getObjectByName(node); if (n) this.hatNodes[style] = n; }
+    for (const [style, node] of Object.entries(STAFF_NODES) as [StaffStyle, string][]) { const n = inst.getObjectByName(node); if (n) this.staffNodes[style] = n; }
     this.beardNode = inst.getObjectByName('Beard') ?? null;
     this.capeNode = inst.getObjectByName('Cape') ?? null;
     this.orbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: col(look.trim), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 }));
@@ -245,6 +248,7 @@ class Wizard {
     this.orbMat.color.set(look.trim);
     (this.orbGlow.material as THREE.SpriteMaterial).color.set(look.trim);
     for (const [style, node] of Object.entries(this.hatNodes) as [HatStyle, THREE.Object3D][]) node.visible = style === look.hatStyle || (!this.hatNodes[look.hatStyle] && style === 'pointy');
+    for (const [style, node] of Object.entries(this.staffNodes) as [StaffStyle, THREE.Object3D][]) node.visible = style === look.staffStyle || (!this.staffNodes[look.staffStyle] && style === 'claw');
     if (this.beardNode) this.beardNode.visible = look.beard;
     if (this.capeNode) this.capeNode.visible = look.cape;
   }
@@ -619,4 +623,12 @@ export class Arena {
   }
 
   setRunning(on: boolean): void { this.running = on; }
+
+  /** A burst of an element's colour around the hero: the visual punctuation of a discovery. */
+  flashDiscovery(color: string): void {
+    const p = this.playerAnchor();
+    this.particles.emit(p.clone().setY(1.4), col(color), 90, 5, 1.4, -1.5, 1.4);
+    this.particles.emit(p.clone().setY(2.4), col('#ffffff'), 40, 3, 1.0, -1, 1.0);
+    this.shake = 0.5;
+  }
 }

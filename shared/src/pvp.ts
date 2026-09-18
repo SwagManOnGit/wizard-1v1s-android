@@ -1,7 +1,8 @@
 // Symmetric two-wizard duel simulation. Runs identically on the server, in a ghost replay and
 // against the local bot. Unlike the campaign, attack spells are lane-locked at cast time so both
 // duellists must dodge. Fighter 0 and fighter 1 are interchangeable; the client decides which is "me".
-import { ENEMY_Z, LANE_X, LANES, SPELL_BY_ID, type SpellDef } from './data';
+import { ENEMY_Z, LANE_X, LANES } from './data';
+import { SPELL_BY_ID, type SpellDef } from './spells';
 import type { Dot, Side } from './battle';
 import type { PlayerStats } from './stats';
 import { Rng } from './rng';

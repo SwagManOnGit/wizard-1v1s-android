@@ -46,6 +46,18 @@ Icons and splash screens are generated from `app/resources/` with `npm run asset
 
 Follow `docs/LAUNCH-CHECKLIST.md`. In short: create the Play Console and AdMob accounts, add the signing secrets and ids to GitHub, upload the AAB to internal testing, run the 14-day closed test with 12 testers, then go to production.
 
+## Discovery, elements and loot
+
+The core loop changed in the second design pass:
+
+- **Spells are hidden until you draw them.** The grimoire shows 51 spells, but an undiscovered one is a silhouette with a tier, a kind and a cryptic hint ("Seven points. You will not find it by accident."). Drawing its glyph in battle reveals it, adds it to the book and casts it on the spot.
+- **Seven elements.** Arcane is free; Fire, Frost, Storm, Nature and Shadow are bought with coins. Eclipse is never sold: it answers only a wizard attuned to all six others, and its three spells are all Mythic.
+- **Glyph tiers run from obvious to absurd.** Common spells are a line or a triangle. Mythic ones are a heptagram, a Lissajous knot or an invented sigil, drawn in a single unbroken stroke. Those are meant to stay rumours for a long time after launch.
+- **Equipment drops, it is not bought.** Hats, outfits, staffs and shoes fall from levels (bosses always drop) and from four kinds of chest. Every piece belongs to an element and has one of five rarities. Duplicates melt into coins.
+- **Gear is the key to the spell list.** Wearing pieces of an element raises your affinity with it, and affinity is what makes deeper spells findable: one piece for Obscure, two for Forbidden, and a complete four-piece set for that element's Mythic. Threadbare starter gear does not count, so the set has to be earned.
+- **Sets pay off twice**: a stat bonus at two, three and four pieces, and the deepest spells at four.
+- Equipment is visible on the wizard: the hat model, robe and staff-head colour all follow what you wear, with six hat shapes and six staff heads across the elements.
+
 ## Game design notes
 
 - Campaign battles are unchanged from the Playables version: spells lock on, the enemy telegraphs lanes.

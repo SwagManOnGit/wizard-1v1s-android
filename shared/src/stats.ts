@@ -1,5 +1,8 @@
-// Derived combat stats. Lives in shared so the server can validate a duellist's numbers.
-import { BASE_SLOTS, EQUIP_BY_ID, EQUIP_SLOTS, PLAYER_BASE, UPGRADES, type EquipSlot } from './data';
+// Derived combat stats: upgrades, equipped gear and the elemental set bonus.
+// Lives in shared so the duel server can validate a player's numbers.
+import { PLAYER_BASE, UPGRADES } from './data';
+import { BASE_SLOTS } from './spells';
+import { EQUIP_BY_ID, EQUIP_SLOTS, activeSetBonus, type EquipSlot } from './equipment';
 
 export interface PlayerStats {
   maxHp: number; maxMana: number; regen: number; power: number; healMult: number; shieldMult: number;
@@ -47,6 +50,17 @@ export function computeStats(b: Build): PlayerStats {
     st.staminaRegen += e.staminaRegen ?? 0;
     st.dodgeCost *= e.dodgeCostMult ?? 1;
   }
+  // Wearing several pieces of one element pays off on top of the individual stats.
+  const set = activeSetBonus(b.equipped);
+  if (set) {
+    st.power += set.bonus.power ?? 0;
+    st.maxMana += set.bonus.mana ?? 0;
+    st.regen += set.bonus.regen ?? 0;
+    if (set.bonus.hpMult) st.maxHp = Math.round(st.maxHp * set.bonus.hpMult);
+  }
+  st.maxHp = Math.round(st.maxHp);
+  st.maxMana = Math.round(st.maxMana);
+  st.maxStamina = Math.round(st.maxStamina);
   st.dodgeCost = Math.round(st.dodgeCost);
   return st;
 }

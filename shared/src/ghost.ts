@@ -20,8 +20,10 @@ export interface GhostTape {
 
 export class GhostRecorder {
   readonly inputs: GhostInput[] = [];
-  dodge(t: number, dir: -1 | 1): void { this.inputs.push({ t: Math.round(t * 1000) / 1000, k: 'd', v: dir }); }
-  cast(t: number, spellId: string): void { this.inputs.push({ t: Math.round(t * 1000) / 1000, k: 'c', v: spellId }); }
+  // Timestamps are floored, never rounded: rounding up would replay the input one tick late and
+  // the whole duel would drift away from the original.
+  dodge(t: number, dir: -1 | 1): void { this.inputs.push({ t: Math.floor(t * 1000) / 1000, k: 'd', v: dir }); }
+  cast(t: number, spellId: string): void { this.inputs.push({ t: Math.floor(t * 1000) / 1000, k: 'c', v: spellId }); }
 }
 
 /** Feeds a tape's inputs into a fighter as the simulation clock passes each timestamp. */
@@ -29,7 +31,7 @@ export class GhostPlayer {
   private cursor = 0;
   constructor(private tape: GhostTape, private sim: PvpBattle, private index: FighterIndex) {}
   tick(): void {
-    while (this.cursor < this.tape.inputs.length && this.tape.inputs[this.cursor].t <= this.sim.time) {
+    while (this.cursor < this.tape.inputs.length && this.tape.inputs[this.cursor].t <= this.sim.time + 1e-6) {
       const inp = this.tape.inputs[this.cursor++];
       if (inp.k === 'd') this.sim.dodge(this.index, inp.v as -1 | 1);
       else this.sim.cast(this.index, String(inp.v));

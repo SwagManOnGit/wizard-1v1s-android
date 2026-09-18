@@ -1,5 +1,5 @@
 // Pixel-art emblems for gear and upgrades: painted small on canvas and scaled up with crisp edges.
-import type { EquipSlot } from '@wizard/shared';
+import { ELEMENT_BY_ID, RARITY_COLORS, type ElementId, type EquipSlot, type Rarity } from '@wizard/shared';
 
 export const TIER_COLORS = ['#c98b4a', '#d8dce8', '#ffd23f', '#c77dff', '#ff7a3d'];   // bronze, silver, gold, arcane, legendary
 /** Internal pixel size of every emblem; CSS scales it up with image-rendering: pixelated. */
@@ -22,13 +22,13 @@ function star(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, n 
 }
 
 const GEAR: Record<EquipSlot, Painter> = {
-  wand(g, s, c) {
+  staff(g, s, c) {
     stroke(g, '#8a5a2a', s * 0.1);
     g.beginPath(); g.moveTo(s * 0.25, s * 0.78); g.lineTo(s * 0.66, s * 0.36); g.stroke();
     g.fillStyle = c; star(g, s * 0.7, s * 0.3, s * 0.18, 4); g.fill();
     g.fillStyle = '#ffffff'; g.fillRect(s * 0.66, s * 0.26, s * 0.08, s * 0.08);
   },
-  robe(g, s, c) {
+  outfit(g, s, c) {
     g.fillStyle = c;
     g.beginPath();
     g.moveTo(s * 0.5, s * 0.18); g.lineTo(s * 0.34, s * 0.26); g.lineTo(s * 0.2, s * 0.44); g.lineTo(s * 0.28, s * 0.52);
@@ -37,13 +37,14 @@ const GEAR: Record<EquipSlot, Painter> = {
     g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(s * 0.47, s * 0.26, s * 0.06, s * 0.56);
     g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(s * 0.38, s * 0.22, s * 0.08, s * 0.1);
   },
-  charm(g, s, c) {
-    stroke(g, '#ffd23f', s * 0.07);
-    g.beginPath(); g.moveTo(s * 0.32, s * 0.2); g.lineTo(s * 0.5, s * 0.08); g.lineTo(s * 0.68, s * 0.2); g.lineTo(s * 0.5, s * 0.38); g.closePath(); g.stroke();
-    g.fillStyle = c; g.beginPath(); g.moveTo(s * 0.5, s * 0.36); g.lineTo(s * 0.76, s * 0.58); g.lineTo(s * 0.5, s * 0.88); g.lineTo(s * 0.24, s * 0.58); g.closePath(); g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillRect(s * 0.42, s * 0.46, s * 0.1, s * 0.1);
+  hat(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.1); g.lineTo(s * 0.68, s * 0.6); g.lineTo(s * 0.32, s * 0.6); g.closePath(); g.fill();
+    g.fillRect(s * 0.16, s * 0.6, s * 0.68, s * 0.12);
+    g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(s * 0.32, s * 0.5, s * 0.36, s * 0.08);
+    g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillRect(s * 0.44, s * 0.22, s * 0.07, s * 0.12);
   },
-  boots(g, s, c) {
+  shoes(g, s, c) {
     g.fillStyle = c;
     g.beginPath();
     g.moveTo(s * 0.34, s * 0.14); g.lineTo(s * 0.6, s * 0.14); g.lineTo(s * 0.6, s * 0.56); g.lineTo(s * 0.82, s * 0.7); g.lineTo(s * 0.82, s * 0.84);
@@ -120,9 +121,31 @@ function medallion(g: CanvasRenderingContext2D, s: number, rim: string): void {
   g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(s * 0.16, s * 0.16, s * 0.68, s * 0.08);
 }
 
-export function gearIcon(slot: EquipSlot, tier: number, size = 44): HTMLCanvasElement {
-  const color = TIER_COLORS[Math.max(0, Math.min(TIER_COLORS.length - 1, tier - 1))];
-  return makePixelCanvas(ICON_PX, size, g => { medallion(g, ICON_PX, color); GEAR[slot](g, ICON_PX, color); });
+/** Gear emblem: the rim shows rarity, the emblem itself is tinted by the element. */
+export function gearIcon(slot: EquipSlot, rarity: Rarity | number, size = 44, elementColor?: string): HTMLCanvasElement {
+  const r = Math.max(1, Math.min(5, Math.round(rarity))) as Rarity;
+  const rim = RARITY_COLORS[r];
+  const tint = elementColor ?? rim;
+  return makePixelCanvas(ICON_PX, size, g => { medallion(g, ICON_PX, rim); GEAR[slot](g, ICON_PX, tint); });
+}
+
+/** One emblem per element, drawn from its own simple motif. */
+export function elementIcon(id: ElementId, size = 44): HTMLCanvasElement {
+  const c = ELEMENT_BY_ID[id].color;
+  return makePixelCanvas(ICON_PX, size, g => {
+    const s = ICON_PX;
+    medallion(g, s, c);
+    g.fillStyle = c;
+    switch (id) {
+      case 'arcane':   star(g, s * 0.5, s * 0.5, s * 0.3, 4); g.fill(); break;
+      case 'fire':     g.beginPath(); g.moveTo(s * 0.5, s * 0.22); g.quadraticCurveTo(s * 0.78, s * 0.52, s * 0.5, s * 0.8); g.quadraticCurveTo(s * 0.22, s * 0.52, s * 0.5, s * 0.22); g.fill(); break;
+      case 'frost':    stroke(g, c, s * 0.07); g.beginPath(); for (let i = 0; i < 3; i++) { const a = (i * 60) * Math.PI / 180; g.moveTo(s * 0.5 - Math.cos(a) * s * 0.3, s * 0.5 - Math.sin(a) * s * 0.3); g.lineTo(s * 0.5 + Math.cos(a) * s * 0.3, s * 0.5 + Math.sin(a) * s * 0.3); } g.stroke(); break;
+      case 'storm':    g.beginPath(); g.moveTo(s * 0.62, s * 0.2); g.lineTo(s * 0.36, s * 0.52); g.lineTo(s * 0.52, s * 0.52); g.lineTo(s * 0.38, s * 0.82); g.lineTo(s * 0.66, s * 0.46); g.lineTo(s * 0.5, s * 0.46); g.closePath(); g.fill(); break;
+      case 'nature':   g.beginPath(); g.ellipse(s * 0.5, s * 0.5, s * 0.16, s * 0.3, Math.PI / 4, 0, Math.PI * 2); g.fill(); break;
+      case 'shadow':   g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.3, 0, Math.PI * 2); g.fill(); g.fillStyle = '#1e1a5a'; g.beginPath(); g.arc(s * 0.62, s * 0.42, s * 0.26, 0, Math.PI * 2); g.fill(); break;
+      case 'eclipse':  g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.3, 0, Math.PI * 2); g.fill(); g.fillStyle = '#1e1a5a'; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.19, 0, Math.PI * 2); g.fill(); break;
+    }
+  });
 }
 
 export function upgradeIcon(id: string, size = 44): HTMLCanvasElement {

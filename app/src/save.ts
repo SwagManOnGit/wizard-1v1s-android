@@ -1,22 +1,33 @@
-// Persistent progress for the Android edition. Parsed defensively so v1 (Playables) saves still load.
-import { EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, SPELL_BY_ID, STARTING_SPELLS, UPGRADES, computeStats, type EquipSlot, type HatStyle, type PlayerStats } from '@wizard/shared';
+// Persistent progress. Parsed defensively so older saves keep loading.
+// v3 replaced bought spells and bought gear with discovered spells and dropped gear.
+import {
+  EQUIP_BY_ID, EQUIP_SLOTS, MUNDANE_ELEMENTS, SPELL_BY_ID, STARTING_ELEMENTS, STARTING_EQUIPMENT, STARTING_SPELLS, UPGRADES,
+  computeStats, type ElementId, type EquipSlot, type PlayerStats,
+} from '@wizard/shared';
 
 export { computeStats };
 export type { PlayerStats };
 
 export interface Settings { music: boolean; sfx: boolean; haptics: boolean; notifications: boolean }
 export interface DailyState { lastClaim: string; streak: number; challengeDate: string; challengeDone: boolean }
-export interface LifetimeStats { dodges: number; casts: number; bossWins: number; duelWins: number; duelLosses: number; ghostWins: number; ghostLosses: number; metersCast: number }
+export interface LifetimeStats {
+  dodges: number; casts: number; bossWins: number; duelWins: number; duelLosses: number;
+  ghostWins: number; ghostLosses: number; metersCast: number; drops: number; chests: number;
+}
 
 export interface SaveData {
-  v: 2;
+  v: 3;
   coins: number;
   level: number;
   best: number;
-  owned: string[];
+  /** Spell ids the player has actually drawn at least once. */
+  discovered: string[];
   loadout: string[];
+  /** Elements attuned. Arcane is always present; Eclipse is never listed, it is derived. */
+  elements: ElementId[];
   upgrades: Record<string, number>;
-  equipOwned: string[];
+  /** Equipment ids owned. Duplicates are melted for coins, so this is a set. */
+  inventory: string[];
   equipped: Partial<Record<EquipSlot, string>>;
   wins: number;
   losses: number;
@@ -27,8 +38,6 @@ export interface SaveData {
   settings: Settings;
   daily: DailyState;
   achievements: string[];
-  hats: HatStyle[];
-  hat: HatStyle;
   passes: { doubleCoins: boolean; noAds: boolean };
   stats: LifetimeStats;
   reviewAsked: boolean;
@@ -47,15 +56,18 @@ function randomName(): string { return `${NAMES[Math.floor(Math.random() * NAMES
 
 export function defaultSave(): SaveData {
   return {
-    v: 2, coins: 0, level: 1, best: 0,
-    owned: [...STARTING_SPELLS], loadout: [...STARTING_SPELLS],
-    upgrades: {}, equipOwned: [], equipped: {}, wins: 0, losses: 0, earned: 0, adsWatched: 0,
+    v: 3, coins: 0, level: 1, best: 0,
+    discovered: [...STARTING_SPELLS], loadout: [...STARTING_SPELLS],
+    elements: [...STARTING_ELEMENTS],
+    upgrades: {}, inventory: [...STARTING_EQUIPMENT],
+    equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
+    wins: 0, losses: 0, earned: 0, adsWatched: 0,
     deviceId: newDeviceId(), name: randomName(),
     settings: { music: true, sfx: true, haptics: true, notifications: true },
     daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false },
-    achievements: [], hats: ['pointy'], hat: 'pointy',
+    achievements: [],
     passes: { doubleCoins: false, noAds: false },
-    stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0 },
+    stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0, drops: 0, chests: 0 },
     reviewAsked: false,
     rating: 1000,
   };
@@ -76,18 +88,36 @@ export function parseSave(raw: string | null): SaveData {
     d.coins = int(o.coins, 0);
     d.level = int(o.level, 1, 1);
     d.best = int(o.best, 0);
-    const owned = new Set([...STARTING_SPELLS, ...strList(o.owned).filter(id => SPELL_BY_ID[id])]);
-    d.owned = [...owned];
-    const loadout = strList(o.loadout).filter(id => owned.has(id));
+
+    // v1/v2 stored bought spells in `owned`; those the player had are treated as already discovered.
+    const knownSource = strList(o.discovered).length ? strList(o.discovered) : strList(o.owned);
+    const known = new Set([...STARTING_SPELLS, ...knownSource.filter(id => SPELL_BY_ID[id])]);
+    d.discovered = [...known];
+    const loadout = strList(o.loadout).filter(id => known.has(id));
     d.loadout = loadout.length ? loadout : [...STARTING_SPELLS];
+
+    const els = strList(o.elements).filter((e): e is ElementId => (MUNDANE_ELEMENTS as string[]).includes(e));
+    d.elements = [...new Set<ElementId>([...STARTING_ELEMENTS, ...els])];
+
     const up = obj(o.upgrades);
     for (const u of UPGRADES) d.upgrades[u.id] = Math.min(u.max, int(up[u.id], 0));
-    d.equipOwned = strList(o.equipOwned).filter(id => EQUIP_BY_ID[id]);
+
+    const inv = strList(o.inventory).filter(id => EQUIP_BY_ID[id]);
+    d.inventory = [...new Set([...STARTING_EQUIPMENT, ...inv])];
+    d.equipped = {};
     const eq = obj(o.equipped);
     for (const s of EQUIP_SLOTS) {
       const id = eq[s.id];
-      if (typeof id === 'string' && EQUIP_BY_ID[id] && d.equipOwned.includes(id) && EQUIP_BY_ID[id].slot === s.id) d.equipped[s.id] = id;
+      if (typeof id === 'string' && EQUIP_BY_ID[id]?.slot === s.id && d.inventory.includes(id)) d.equipped[s.id] = id;
     }
+    // Anything the save did not fill keeps the starter piece so the player is never half naked.
+    for (const s of EQUIP_SLOTS) {
+      if (!d.equipped[s.id]) {
+        const fallback = d.inventory.find(id => EQUIP_BY_ID[id]?.slot === s.id);
+        if (fallback) d.equipped[s.id] = fallback;
+      }
+    }
+
     d.wins = int(o.wins, 0); d.losses = int(o.losses, 0); d.earned = int(o.earned, 0); d.adsWatched = int(o.adsWatched, 0);
     d.deviceId = str(o.deviceId, d.deviceId) || d.deviceId;
     d.name = str(o.name, d.name).slice(0, 16) || d.name;
@@ -96,16 +126,13 @@ export function parseSave(raw: string | null): SaveData {
     const dl = obj(o.daily);
     d.daily = { lastClaim: str(dl.lastClaim, ''), streak: int(dl.streak, 0), challengeDate: str(dl.challengeDate, ''), challengeDone: bool(dl.challengeDone, false) };
     d.achievements = strList(o.achievements);
-    const hats = strList(o.hats).filter((h): h is HatStyle => (HAT_STYLES as readonly string[]).includes(h));
-    d.hats = [...new Set<HatStyle>(['pointy', ...hats])];
-    const hat = str(o.hat, 'pointy');
-    d.hat = d.hats.includes(hat as HatStyle) ? (hat as HatStyle) : 'pointy';
     const ps = obj(o.passes);
     d.passes = { doubleCoins: bool(ps.doubleCoins, false), noAds: bool(ps.noAds, false) };
     const ls = obj(o.stats);
     d.stats = {
       dodges: int(ls.dodges, 0), casts: int(ls.casts, 0), bossWins: int(ls.bossWins, 0), duelWins: int(ls.duelWins, 0), duelLosses: int(ls.duelLosses, 0),
       ghostWins: int(ls.ghostWins, 0), ghostLosses: int(ls.ghostLosses, 0), metersCast: int(ls.metersCast, 0),
+      drops: int(ls.drops, 0), chests: int(ls.chests, 0),
     };
     d.reviewAsked = bool(o.reviewAsked, false);
     d.rating = int(o.rating, 1000);

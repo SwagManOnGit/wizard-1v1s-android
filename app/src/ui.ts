@@ -3,12 +3,16 @@ import logoUrl from './assets/swag-logo.png';
 import { setMusic, sfx, unlockAudio } from './audio';
 import { Battle, type BattleEvent } from '@wizard/shared';
 import {
-  AD_REWARD, EQUIPMENT, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL, PLAYER_LOOK, SPELLS, SPELL_BY_ID, UPGRADES, enemyForLevel, isBossLevel, shiftColor, upgradePrice,
-  type EnemyDef, type HatStyle, type SpellDef, type StageId, type WizardLook,
+  AD_REWARD, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL, RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
+  SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
+  activeSetBonus, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel, isAttuned, isBossLevel,
+  openChest, requirementText, rollLevelDrop, shiftColor, spellStatus, upgradePrice,
+  type ChestDef, type ElementId, type EnemyDef, type EquipDef, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { GLYPHS, drawGlyph, type Point } from '@wizard/shared';
-import { gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
+import { elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
 import { Recognizer } from '@wizard/shared';
+import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
 import { Arena } from './scene';
 import { CONFIG, platform, webPlatform } from './platform';
@@ -20,16 +24,13 @@ import { BotSession, GhostSession, OnlineSession, fetchGhost, type DuelMode, typ
 import type { BattleLike } from './duel/view';
 
 const RECOGNIZE_THRESHOLD = 0.6;
-const HAT_PRICES: Record<HatStyle, number> = { pointy: 0, hood: 800, wide: 1200, turban: 1500, crown: 3000, horns: 5000 };
-const HAT_NAMES: Record<HatStyle, string> = { pointy: 'Classic Pointy', hood: 'Shadow Hood', wide: 'Witch Brim', turban: 'Sultan Turban', crown: 'Royal Crown', horns: 'Warlord Horns' };
-
-/** The hero's look: the chosen hat over the classic blue robes. */
-function playerLook(save: SaveData): WizardLook { return { ...PLAYER_LOOK, hatStyle: save.hat }; }
+/** A discovery must beat the best equipped match by this much, so known spells always win ties. */
+const DISCOVERY_MARGIN = 0.03;
 
 /** A stable outfit for an opponent we only know by name. */
 function lookFromName(name: string): WizardLook {
   const h = [...name].reduce((s, c) => (s * 31 + c.charCodeAt(0)) >>> 0, 7);
-  return { robe: shiftColor('#c04040', (h % 10) / 10), hat: shiftColor('#802020', (h % 10) / 10), trim: '#ffd23f', skin: '#e8c39e', hatStyle: HAT_STYLES[h % HAT_STYLES.length], beard: h % 3 !== 0, cape: h % 2 === 0 };
+  return { robe: shiftColor('#c04040', (h % 10) / 10), hat: shiftColor('#802020', (h % 10) / 10), trim: '#ffd23f', skin: '#e8c39e', hatStyle: HAT_STYLES[h % HAT_STYLES.length], staffStyle: STAFF_STYLES[h % STAFF_STYLES.length], beard: h % 3 !== 0, cape: h % 2 === 0 };
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -54,6 +55,22 @@ function glyphCanvas(spell: SpellDef, size = 44): HTMLCanvasElement {
   });
 }
 
+/** A silhouette for a spell nobody has drawn yet: enough to tease, never enough to copy. */
+function mysteryCanvas(spell: SpellDef, size = 44): HTMLCanvasElement {
+  const px = 28;
+  const colour = ELEMENT_BY_ID[spell.element].color;
+  return makePixelCanvas(px, size, g => {
+    g.fillStyle = '#120c34'; g.fillRect(0, 0, px, px);
+    g.fillStyle = '#1e1a5a'; g.fillRect(1, 1, px - 2, px - 2);
+    // Tier is shown as dots, so players can see how deep a secret is without seeing its shape.
+    g.fillStyle = colour;
+    for (let i = 0; i < spell.tier; i++) g.fillRect(4 + i * 4, px - 7, 3, 3);
+    g.fillStyle = shiftColor(colour, 0, -0.25);
+    g.font = '16px "Jersey 10", sans-serif'; g.textAlign = 'center';
+    g.fillText('?', px / 2, px / 2 + 4);
+  });
+}
+
 function strokeExtent(pts: Point[]): number {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
@@ -69,11 +86,16 @@ const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
 
 /** A blank progression block for the reset button (identity and settings are kept by the caller). */
 function parseSaveFresh(): Partial<SaveData> {
+  const starters = SPELLS.filter(s => s.starter).map(s => s.id);
   return {
-    coins: 0, level: 1, best: 0, owned: [...SPELLS.filter(s => s.price === 0).map(s => s.id)], loadout: [...SPELLS.filter(s => s.price === 0).map(s => s.id)],
-    upgrades: {}, equipOwned: [], equipped: {}, wins: 0, losses: 0, earned: 0, adsWatched: 0,
+    coins: 0, level: 1, best: 0, discovered: [...starters], loadout: [...starters],
+    elements: ['arcane'], upgrades: {},
+    inventory: [...STARTING_EQUIPMENT],
+    equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
+    wins: 0, losses: 0, earned: 0, adsWatched: 0,
     daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false }, achievements: [],
-    stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0 }, reviewAsked: false, rating: 1000,
+    stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0, drops: 0, chests: 0 },
+    reviewAsked: false, rating: 1000,
   };
 }
 
@@ -86,8 +108,8 @@ export function showSplash(root: HTMLElement): Promise<void> {
   return new Promise(res => setTimeout(res, 1500));
 }
 
-type ScreenId = 'menu' | 'levels' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements';
-type ShopTab = 'spells' | 'upgrades' | 'gear' | 'hats' | 'coins' | 'bank' | 'training';
+type ScreenId = 'menu' | 'levels' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements' | 'grimoire' | 'gear';
+type ShopTab = 'elements' | 'chests' | 'upgrades' | 'coins' | 'bank' | 'training';
 
 export class UI {
   private save: SaveData;
@@ -108,6 +130,9 @@ export class UI {
   private dailyChecked = false;
   private toasts: HTMLElement | null = null;
   private recognizer = new Recognizer<string>();
+  /** Separate pool of spells the player has not found yet but could, given their element and gear. */
+  private discoveryRec = new Recognizer<string>();
+  private grimoireElement: ElementId = 'arcane';
   private loopId = 0;
   private lastT = 0;
   private paused = false;
@@ -137,6 +162,7 @@ export class UI {
     this.screens = {
       menu: el('div', 'screen'), levels: el('div', 'screen'), battle: el('div', 'screen'), result: el('div', 'screen'), shop: el('div', 'screen'),
       duel: el('div', 'screen'), settings: el('div', 'screen'), ranks: el('div', 'screen'), achievements: el('div', 'screen'),
+      grimoire: el('div', 'screen'), gear: el('div', 'screen'),
     };
     for (const [id, s] of Object.entries(this.screens)) { s.id = id; root.append(s); }
     this.overlay = el('div', 'overlay');
@@ -192,11 +218,14 @@ export class UI {
     const best = el('div', 'stats-line', this.save.best ? `Best: level ${this.save.best} cleared` : 'No levels cleared yet');
     const play = btn('PLAY', 'gold big', () => this.showLevels());
     const duelBtn = btn('DUEL', 'red big', () => this.showDuelMenu());
+    const prog = discoveryProgress(this.save.discovered);
     const row = el('div', 'menu-row');
-    row.append(btn('Shop', 'blue', () => this.showShop('spells')), btn('Training', 'green', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true)));
+    row.append(btn(`Grimoire ${prog.found}/${prog.total}`, 'blue', () => this.showGrimoire()), btn('Gear', 'blue', () => this.showGear()));
+    const row1 = el('div', 'menu-row');
+    row1.append(btn('Shop', 'green', () => this.showShop('elements')), btn('Training', 'green', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true)));
     const row2 = el('div', 'menu-row');
     row2.append(btn('Ranks', 'ghost', () => this.showRanks()), btn('Awards', 'ghost', () => this.showAchievements()), btn('Settings', 'ghost', () => this.showSettings()));
-    card.append(topRow, play, duelBtn, row, row2, best);
+    card.append(topRow, play, duelBtn, row, row1, row2, best);
     const howto = el('div', 'howto', 'Draw a spell glyph on the pad to cast it. Spells lock on by themselves. Tap the side buttons (or swipe) to dodge the enemy\'s bolts. Win coins, buy spells, beat 100 levels.');
     m.append(title, sub, card, howto);
     this.show('menu');
@@ -303,8 +332,7 @@ export class UI {
     const stats = computeStats(this.save);
     const loadout = this.save.loadout.map(id => SPELL_BY_ID[id]).filter(Boolean);
     this.battle = new Battle({ enemy, stats, loadout, training });
-    this.recognizer.clear();
-    for (const s of loadout) this.recognizer.add(s.id, GLYPHS[s.glyph].points);
+    this.armRecognizers(loadout);
 
     if (!this.arena) this.arena = new Arena(this.arenaEl);
     this.arena.setPlayerLook(playerLook(this.save));
@@ -391,8 +419,7 @@ export class UI {
     this.duel = session;
     this.duelCountdownShown = 99;
     this.battle = session.view;
-    this.recognizer.clear();
-    for (const s of session.view.loadout) this.recognizer.add(s.id, GLYPHS[s.glyph].points);
+    this.armRecognizers(session.view.loadout);
     if (!this.arena) this.arena = new Arena(this.arenaEl);
     const stages: StageId[] = ['castle', 'forest', 'cave'];
     this.arena.setPlayerLook(playerLook(this.save));
@@ -471,7 +498,7 @@ export class UI {
       const d = this.duel;
       d.tick(dt);
       // The battle view can be replaced once the server starts the match.
-      if (this.battle !== d.view) { this.battle = d.view; this.recognizer.clear(); for (const s of d.view.loadout) this.recognizer.add(s.id, GLYPHS[s.glyph].points); this.buildHud(d.view.enemyDef, d.view.loadout); this.hud.enemyLvl.textContent = d.mode.toUpperCase(); }
+      if (this.battle !== d.view) { this.battle = d.view; this.armRecognizers(d.view.loadout); this.buildHud(d.view.enemyDef, d.view.loadout); this.hud.enemyLvl.textContent = d.mode.toUpperCase(); }
       const c = Math.ceil(d.countdown);
       if (c !== this.duelCountdownShown) { this.duelCountdownShown = c; if (c > 0) this.banner(String(c), d.status); else this.banner('DUEL!', `vs ${d.opponentName}`); }
       if (d.outcome && (d.view.overT > 1.8 || d.outcome.reason !== 'ko')) { this.endDuel(); return; }
@@ -749,10 +776,77 @@ export class UI {
     this.drawPad();
   }
 
+  /** Rebuilds both recognisers: the equipped spells, and everything currently discoverable. */
+  private armRecognizers(loadout: SpellDef[]): void {
+    this.recognizer.clear();
+    for (const s of loadout) this.recognizer.add(s.id, GLYPHS[s.glyph].points);
+    this.discoveryRec.clear();
+    const equipped = new Set(loadout.map(s => s.id));
+    for (const s of discoverable(attunement(this.save), this.save.discovered)) {
+      if (!equipped.has(s.id)) this.discoveryRec.add(s.id, GLYPHS[s.glyph].points);
+    }
+  }
+
+  /** Appends a chip for a spell learned mid-battle, without rebuilding (and wiping) the HUD. */
+  private addSpellChip(spell: SpellDef): void {
+    const strip = this.controls.querySelector('.spell-strip');
+    if (!strip || this.hud.chips.has(spell.id)) return;
+    const chip = el('button', 'spell-chip fresh');
+    chip.append(glyphCanvas(spell, 36), el('div', 'nm', spell.name), el('div', 'cost', spell.cost ? `${this.battle?.spellCost(spell) ?? spell.cost}` : 'free'));
+    chip.addEventListener('click', () => { this.padHint = spell; this.padHintT = 2.5; this.drawPad(); });
+    this.hud.chips.set(spell.id, chip);
+    strip.append(chip);
+    chip.scrollIntoView({ inline: 'end', block: 'nearest' });
+  }
+
+  /** A spell has been drawn for the first time. This is the moment the whole system exists for. */
+  private discover(spell: SpellDef): void {
+    if (this.save.discovered.includes(spell.id)) return;
+    this.save.discovered.push(spell.id);
+    const stats = computeStats(this.save);
+    if (!this.save.loadout.includes(spell.id) && this.save.loadout.length < stats.slots) this.save.loadout.push(spell.id);
+    this.commit();
+    this.afterProgress();
+    if (this.save.settings.haptics) platform.haptic('success');
+    sfx.win();
+    const elName = ELEMENT_BY_ID[spell.element].name;
+    this.banner('DISCOVERED', `${spell.name} · ${elName}`);
+    this.toast(`${spell.name} discovered`, `${TIER_NAMES[spell.tier]} ${elName} spell`);
+    this.arena?.flashDiscovery(ELEMENT_BY_ID[spell.element].color);
+  }
+
   private finishStroke(): void {
     const b = this.battle; if (!b) return;
     const pad = this.hud.pad;
+    const rectEarly = pad.getBoundingClientRect();
+    const coverageNow = strokeExtent(this.padPoints) / Math.max(1, Math.min(rectEarly.width, rectEarly.height));
     const m = this.recognizer.recognize(this.padPoints);
+
+    // Unknown spells are checked first: a confident, large stroke that beats every equipped glyph
+    // is how a spell reveals itself. The bar rises with the spell's tier.
+    const dm = this.discoveryRec.recognize(this.padPoints);
+    if (dm) {
+      const found = SPELL_BY_ID[dm.key];
+      const clear = dm.score >= discoveryThreshold(found.tier);
+      const beatsKnown = !m || dm.score > m.score + DISCOVERY_MARGIN;
+      const bigEnough = coverageNow >= requiredCoverage(found);
+      if (clear && beatsKnown && bigEnough) {
+        this.padFlash = 0.45;
+        pad.classList.add('ok');
+        this.discover(found);
+        // Bring it into this battle straight away when the loadout has room, then re-arm so the
+        // spell stops counting as undiscovered.
+        if (this.save.loadout.includes(found.id) && !b.loadout.some(s => s.id === found.id)) {
+          b.loadout.push(found);
+          this.addSpellChip(found);
+        }
+        this.armRecognizers(b.loadout);
+        if (b.loadout.some(s => s.id === found.id)) b.cast(found.id);
+        else this.castMessage(`${found.name} is in your grimoire`, false);
+        return;
+      }
+    }
+
     this.padFlash = 0.45;
     if (!m || m.score < RECOGNIZE_THRESHOLD) {
       pad.classList.add('bad');
@@ -837,6 +931,12 @@ export class UI {
     if (this.training) reward = 0;
     this.save.coins += reward;
     this.save.earned += reward;
+    // Equipment only comes from here and from chests, so a win is always worth playing out.
+    let drop: GrantResult | null = null;
+    if (outcome === 'win' && !this.training) {
+      const item = rollLevelDrop(level, enemy.boss, level > this.save.best, this.save.elements);
+      if (item) drop = grantItem(this.save, item);
+    }
     if (outcome === 'win') {
       this.save.wins++;
       if (enemy.boss) this.save.stats.bossWins++;
@@ -854,7 +954,7 @@ export class UI {
     this.afterProgress();
     this.battle = null;
     this.arena.setRunning(false);
-    this.showResult(outcome, reward, level, enemy);
+    this.showResult(outcome, reward, level, enemy, drop);
     // Ask for a store review once, after the third boss falls: the player is invested by then.
     if (outcome === 'win' && enemy.boss && this.save.stats.bossWins === 3 && !this.save.reviewAsked && platform.native) {
       this.save.reviewAsked = true; this.commit();
@@ -867,7 +967,7 @@ export class UI {
     }
   }
 
-  private showResult(outcome: 'win' | 'lose', reward: number, level: number, enemy: EnemyDef): void {
+  private showResult(outcome: 'win' | 'lose', reward: number, level: number, enemy: EnemyDef, drop: GrantResult | null = null): void {
     setMusic('menu');
     const s = this.screens.result;
     s.innerHTML = '';
@@ -879,10 +979,21 @@ export class UI {
     const rew = el('div', 'reward', `+${fmt(reward)} coins`);
     const coins = el('div', 'coins', fmt(this.save.coins));
     card.append(h2, sub, rew, coins);
+    if (drop) {
+      const elDef = ELEMENT_BY_ID[drop.item.element];
+      const loot = el('div', 'row-card loot');
+      loot.style.borderColor = RARITY_COLORS[drop.item.rarity];
+      loot.append(gearIcon(drop.item.slot, drop.item.rarity, 44, elDef.color));
+      const info = el('div', 'info');
+      info.append(el('div', 'name', drop.item.name), el('div', 'kind', `${RARITY_NAMES[drop.item.rarity]} · ${elDef.name}`));
+      info.append(el('div', 'desc', drop.isNew ? (drop.upgrade ? 'New, and equipped' : 'New') : `Duplicate, melted for ${fmt(drop.coins)} coins`));
+      loot.append(info);
+      card.append(loot);
+    }
     if (outcome === 'win' && level < MAX_LEVEL) card.append(btn(`NEXT: LEVEL ${level + 1}`, 'gold big', () => this.startBattle(level + 1, false)));
     if (outcome === 'lose') card.append(btn('RETRY', 'gold big', () => this.startBattle(level, false)));
     const row = el('div', 'menu-row');
-    row.append(btn('Shop', 'green', () => this.showShop('spells')), btn('Menu', '', () => this.showMenu()));
+    row.append(btn('Shop', 'green', () => this.showShop('elements')), btn('Menu', '', () => this.showMenu()));
     card.append(row);
     s.append(card);
     this.show('result');
@@ -930,7 +1041,7 @@ export class UI {
   onResume(): void { this.paused = this.overlay.classList.contains('active'); this.lastT = performance.now(); }
 
   // ---------------------------------------------------------------- shop
-  private shopTab: ShopTab = 'spells';
+  private shopTab: ShopTab = 'elements';
 
   showShop(tab: ShopTab): void {
     this.stopLoop();
@@ -947,7 +1058,7 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SHOP'), el('div', 'coins', fmt(this.save.coins)));
     const tabs = el('div', 'tabs');
-    const names: [ShopTab, string][] = [['spells', 'Spells'], ['upgrades', 'Upgrades'], ['gear', 'Gear'], ['hats', 'Hats'], ['coins', 'Coins'], ['bank', 'Bank'], ['training', 'Training']];
+    const names: [ShopTab, string][] = [['elements', 'Elements'], ['chests', 'Chests'], ['upgrades', 'Upgrades'], ['coins', 'Coins'], ['bank', 'Bank'], ['training', 'Training']];
     for (const [id, label] of names) {
       const t = el('button', `tab ${this.shopTab === id ? 'active' : ''}`, label);
       t.addEventListener('click', () => { sfx.click(); this.shopTab = id; this.renderShop(); });
@@ -955,10 +1066,9 @@ export class UI {
     }
     const body = el('div', 'shop-body');
     switch (this.shopTab) {
-      case 'spells': this.renderSpells(body); break;
+      case 'elements': this.renderElements(body); break;
       case 'upgrades': this.renderUpgrades(body); break;
-      case 'gear': this.renderGear(body); break;
-      case 'hats': this.renderHats(body); break;
+      case 'chests': this.renderChests(body); break;
       case 'coins': this.renderCoins(body); break;
       case 'bank': this.renderBank(body); break;
       case 'training': this.renderTraining(body); break;
@@ -970,53 +1080,6 @@ export class UI {
     body.scrollTop = scrollTop;
   }
 
-  private renderSpells(body: HTMLElement): void {
-    const stats = computeStats(this.save);
-    const title = el('div', 'section-title');
-    title.innerHTML = `Loadout <small>${this.save.loadout.length} / ${stats.slots} slots. Only equipped spells can be drawn.</small>`;
-    body.append(title);
-    const grid = el('div', 'grid');
-    const sorted = [...SPELLS].sort((a, b) => a.price - b.price);
-    for (const sp of sorted) {
-      const owned = this.save.owned.includes(sp.id);
-      const equipped = this.save.loadout.includes(sp.id);
-      const card = el('div', `card ${equipped ? 'equipped' : ''} ${owned ? '' : 'locked'}`);
-      const head = el('div', 'head');
-      const nameBox = el('div');
-      nameBox.append(el('div', 'name', sp.name), el('div', 'kind', `${sp.kind} · ${GLYPHS[sp.glyph].label}`));
-      head.append(glyphCanvas(sp), nameBox);
-      const meta = el('div', 'meta');
-      meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
-      card.append(head, el('div', 'desc', sp.desc), meta);
-      if (!owned) {
-        const b = btn(`Buy · ${fmt(sp.price)}`, 'gold', () => this.buySpell(sp));
-        b.disabled = this.save.coins < sp.price;
-        card.append(b);
-      } else if (equipped) {
-        const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.renderShop(); });
-        b.disabled = this.save.loadout.length <= 1;
-        card.append(b);
-      } else {
-        const b = btn('Equip', 'green', () => { this.save.loadout.push(sp.id); this.commit(); this.renderShop(); });
-        b.disabled = this.save.loadout.length >= stats.slots;
-        if (b.disabled) b.textContent = 'Loadout full';
-        card.append(b);
-      }
-      grid.append(card);
-    }
-    body.append(grid);
-  }
-
-  private buySpell(sp: SpellDef): void {
-    if (this.save.coins < sp.price || this.save.owned.includes(sp.id)) return;
-    this.save.coins -= sp.price;
-    this.save.owned.push(sp.id);
-    const stats = computeStats(this.save);
-    if (this.save.loadout.length < stats.slots) this.save.loadout.push(sp.id);
-    sfx.buy();
-    this.commit();
-    this.renderShop();
-  }
 
   private renderUpgrades(body: HTMLElement): void {
     const stats = computeStats(this.save);
@@ -1051,43 +1114,37 @@ export class UI {
     }
   }
 
-  private renderGear(body: HTMLElement): void {
-    for (const slot of EQUIP_SLOTS) {
-      const title = el('div', 'section-title');
-      const cur = this.save.equipped[slot.id];
-      const tl = el('span', 'with-icon'); tl.append(slotIcon(slot.id, 26), document.createTextNode(slot.name));
-      title.append(tl, el('small', '', cur ? EQUIP_BY_ID[cur].name : 'nothing equipped'));
-      body.append(title);
-      const grid = el('div', 'grid');
-      for (const e of EQUIPMENT.filter(x => x.slot === slot.id)) {
-        const owned = this.save.equipOwned.includes(e.id);
-        const equipped = cur === e.id;
-        const card = el('div', `card ${equipped ? 'equipped' : ''}`);
-        const head = el('div', 'head'); const nb = el('div');
-        nb.append(el('div', 'name', e.name), el('div', 'kind', `${slot.name} · tier ${e.tier}`));
-        head.append(gearIcon(e.slot, e.tier), nb);
-        card.append(head, el('div', 'desc', e.desc));
-        if (!owned) {
-          const b = btn(`Buy · ${fmt(e.price)}`, 'gold', () => {
-            if (this.save.coins < e.price) return;
-            this.save.coins -= e.price;
-            this.save.equipOwned.push(e.id);
-            this.save.equipped[slot.id] = e.id;
-            sfx.buy();
-            this.commit();
-            this.renderShop();
-          });
-          b.disabled = this.save.coins < e.price;
-          card.append(b);
-        } else if (equipped) {
-          card.append(btn('Equipped', 'ghost', () => { delete this.save.equipped[slot.id]; this.commit(); this.renderShop(); }));
-        } else {
-          card.append(btn('Equip', 'green', () => { this.save.equipped[slot.id] = e.id; this.commit(); this.renderShop(); }));
-        }
-        grid.append(card);
+  private renderElements(body: HTMLElement): void {
+    const att = attunement(this.save);
+    const title = el('div', 'section-title');
+    title.innerHTML = `Elements <small>Attuning reveals that element's spells. You still have to find them.</small>`;
+    body.append(title);
+    for (const e of ELEMENTS) {
+      const owned = isAttuned(att, e.id);
+      const prog = discoveryProgress(this.save.discovered).byElement[e.id] ?? { found: 0, total: 0 };
+      const row = el('div', `row-card ${owned ? 'done' : ''}`);
+      row.append(elementIcon(e.id, 48));
+      const info = el('div', 'info');
+      info.append(el('div', 'name', e.name), el('div', 'desc', e.desc));
+      info.append(el('div', 'kind', owned ? `Attuned · ${prog.found} of ${prog.total} spells found` : e.motto));
+      row.append(info);
+      if (owned) row.append(btn('Attuned', 'ghost small'));
+      else if (e.secret) row.append(btn('???', 'ghost small'));
+      else {
+        const b = btn(fmt(e.price), 'gold small', () => {
+          if (!attune(this.save, e.id)) return;
+          sfx.buy(); this.commit(); this.afterProgress(); this.renderShop();
+          this.toast(`${e.name} attuned`, 'Its spells can now be found');
+        });
+        b.disabled = this.save.coins < e.price;
+        row.append(b);
       }
-      body.append(grid);
+      body.append(row);
     }
+    const eclipse = ELEMENT_BY_ID.eclipse;
+    const hint = el('div', 'card');
+    hint.append(el('div', 'name', eclipse.name), el('div', 'desc', eclipse.desc));
+    body.append(hint);
   }
 
   private renderCoins(body: HTMLElement): void {
@@ -1116,30 +1173,53 @@ export class UI {
     body.append(tips);
   }
 
-  private renderHats(body: HTMLElement): void {
+  private renderChests(body: HTMLElement): void {
     const title = el('div', 'section-title');
-    title.innerHTML = `Hats <small>Cosmetic. Worn in every battle and shown to duel opponents.</small>`;
+    title.innerHTML = `Chests <small>Equipment only drops. Chests are how you aim the drops.</small>`;
     body.append(title);
-    const grid = el('div', 'grid');
-    for (const hat of HAT_STYLES) {
-      const owned = this.save.hats.includes(hat);
-      const worn = this.save.hat === hat;
-      const card = el('div', `card ${worn ? 'equipped' : ''}`);
-      card.append(el('div', 'name', HAT_NAMES[hat]), el('div', 'desc', hat === 'pointy' ? 'The one every apprentice starts with.' : `A ${hat} for the discerning duellist.`));
-      if (!owned) {
-        const price = HAT_PRICES[hat];
-        const b = btn(`Buy · ${fmt(price)}`, 'gold', () => {
-          if (this.save.coins < price) return;
-          this.save.coins -= price; this.save.hats.push(hat); this.save.hat = hat;
-          sfx.buy(); this.commit(); this.afterProgress(); this.renderShop();
-        });
-        b.disabled = this.save.coins < price;
-        card.append(b);
-      } else if (worn) card.append(btn('Wearing', 'ghost'));
-      else card.append(btn('Wear', 'green', () => { this.save.hat = hat; this.commit(); this.renderShop(); }));
-      grid.append(card);
+    for (const c of CHESTS) {
+      const row = el('div', 'row-card');
+      const info = el('div', 'info');
+      info.append(el('div', 'name', c.name), el('div', 'desc', c.desc));
+      row.append(info);
+      const b = btn(fmt(c.price), 'gold small', () => {
+        if (this.save.coins < c.price) return;
+        if (c.pickElement) this.pickChestElement(c);
+        else this.openChestNow(c);
+      });
+      b.disabled = this.save.coins < c.price;
+      row.append(b);
+      body.append(row);
     }
-    body.append(grid);
+    const note = el('div', 'card');
+    note.append(el('div', 'name', 'Where else gear comes from'),
+      el('div', 'desc', 'Every level can drop a piece, and a boss always drops one. The higher the level, the better the odds of Epic and Mythic. Duplicates melt into coins automatically.'));
+    body.append(note);
+  }
+
+  private pickChestElement(c: ChestDef): void {
+    this.openOverlay((box, close) => {
+      box.append(el('h2', '', 'CHOOSE AN ELEMENT'), el('div', 'note', 'Every piece in this chest will be of that element.'));
+      const grid = el('div', 'element-picker');
+      for (const e of ELEMENTS.filter(x => !x.secret)) {
+        const b = btn(e.name, 'ghost small', () => { close(); this.openChestNow(c, e.id); });
+        b.style.borderColor = e.color;
+        grid.append(b);
+      }
+      box.append(grid, btn('Cancel', 'ghost', close));
+    });
+  }
+
+  private openChestNow(c: ChestDef, element?: ElementId): void {
+    if (this.save.coins < c.price) return;
+    this.save.coins -= c.price;
+    this.save.stats.chests++;
+    const items = openChest(c, this.save.elements, element);
+    const results = items.map(i => grantItem(this.save, i));
+    sfx.buy();
+    this.commit();
+    this.afterProgress();
+    this.showLoot(results, c.name);
   }
 
   private renderBank(body: HTMLElement): void {
@@ -1151,7 +1231,7 @@ export class UI {
       { sku: CONFIG.skus.coinsLarge, name: `${fmt(CONFIG.coinsLarge)} coins`, desc: 'A chest of gold. Best value.', fallback: '$7.99' },
       { sku: CONFIG.skus.doubleCoins, name: 'Double coins', desc: 'Every battle and duel pays twice as much, forever.', owned: this.save.passes.doubleCoins, fallback: '$3.99' },
       { sku: CONFIG.skus.noAds, name: 'Supporter pass', desc: 'Support the game. Rewarded ads stay optional and keep paying.', owned: this.save.passes.noAds, fallback: '$2.99' },
-      { sku: CONFIG.skus.hatPack, name: 'Hat pack', desc: 'Unlocks every hat at once.', owned: HAT_STYLES.every(h => this.save.hats.includes(h)), fallback: '$2.99' },
+      { sku: CONFIG.skus.hatPack, name: 'Founder\'s hoard', desc: 'Seven Gold Chests, opened instantly.', fallback: '$2.99' },
     ];
     const grid = el('div', 'grid');
     for (const it of items) {
@@ -1182,7 +1262,10 @@ export class UI {
     if (sku === CONFIG.skus.coinsLarge && !restoring) { this.save.coins += CONFIG.coinsLarge; this.save.earned += CONFIG.coinsLarge; }
     if (sku === CONFIG.skus.doubleCoins) this.save.passes.doubleCoins = true;
     if (sku === CONFIG.skus.noAds) this.save.passes.noAds = true;
-    if (sku === CONFIG.skus.hatPack) this.save.hats = [...HAT_STYLES];
+    if (sku === CONFIG.skus.hatPack && !restoring) {
+      const gold = CHESTS.find(c => c.id === 'gold')!;
+      for (let i = 0; i < 7; i++) for (const it of openChest(gold, this.save.elements)) grantItem(this.save, it);
+    }
     this.commit();
     this.afterProgress();
   }
@@ -1195,6 +1278,164 @@ export class UI {
         row.append(btn('Buy', 'gold', () => { close(); resolve(true); }), btn('Cancel', 'ghost', () => { close(); resolve(false); }));
         box.append(row);
       });
+    });
+  }
+
+  // ---------------------------------------------------------------- grimoire
+  /** Every spell in the game, most of them silhouettes until you draw them. */
+  showGrimoire(): void {
+    this.stopLoop();
+    setMusic('menu');
+    const s = this.screens.grimoire;
+    s.innerHTML = '';
+    const att = attunement(this.save);
+    const stats = computeStats(this.save);
+    const prog = discoveryProgress(this.save.discovered);
+    const head = el('div', 'shop-head');
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'GRIMOIRE'), el('div', 'coins', `${prog.found} / ${prog.total}`));
+
+    const tabs = el('div', 'tabs');
+    for (const e of ELEMENTS) {
+      const known = isAttuned(att, e.id);
+      const p = prog.byElement[e.id] ?? { found: 0, total: 0 };
+      const t = el('button', `tab ${this.grimoireElement === e.id ? 'active' : ''}`, known ? `${e.name} ${p.found}/${p.total}` : `${e.name} ?`);
+      if (this.grimoireElement !== e.id) t.style.color = e.color;
+      t.addEventListener('click', () => { sfx.click(); this.grimoireElement = e.id; this.showGrimoire(); });
+      tabs.append(t);
+    }
+
+    const body = el('div', 'shop-body');
+    const elDef = ELEMENT_BY_ID[this.grimoireElement];
+    const loadNote = el('div', 'section-title');
+    loadNote.innerHTML = `${elDef.name} <small>Loadout ${this.save.loadout.length} / ${stats.slots}. Only equipped spells can be cast.</small>`;
+    body.append(loadNote);
+    if (!isAttuned(att, this.grimoireElement)) {
+      const locked = el('div', 'card');
+      locked.append(el('div', 'name', 'Not attuned'), el('div', 'desc', elDef.desc));
+      if (!elDef.secret) locked.append(btn('Attune in the shop', 'gold', () => this.showShop('elements')));
+      body.append(locked);
+    }
+    const grid = el('div', 'grid');
+    for (const sp of elementSpells(this.grimoireElement)) {
+      const st = spellStatus(sp, att, this.save.discovered);
+      const equipped = this.save.loadout.includes(sp.id);
+      const card = el('div', `card spell-card ${equipped ? 'equipped' : ''} ${st.known ? '' : 'undiscovered'} ${st.reason === 'ready' ? 'ready' : ''}`);
+      const headRow = el('div', 'head');
+      const nameBox = el('div');
+      if (st.known) {
+        headRow.append(glyphCanvas(sp), nameBox);
+        nameBox.append(el('div', 'name', sp.name), el('div', 'kind', `${TIER_NAMES[sp.tier]} · ${sp.kind}`));
+        card.append(headRow, el('div', 'desc', sp.desc));
+        const meta = el('div', 'meta');
+        meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
+        card.append(meta);
+        if (equipped) {
+          const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.showGrimoire(); });
+          b.disabled = this.save.loadout.length <= 1;
+          card.append(b);
+        } else {
+          const b = btn('Equip', 'green', () => { this.save.loadout.push(sp.id); this.commit(); this.showGrimoire(); });
+          b.disabled = this.save.loadout.length >= stats.slots;
+          if (b.disabled) b.textContent = 'Loadout full';
+          card.append(b);
+        }
+      } else {
+        headRow.append(mysteryCanvas(sp), nameBox);
+        nameBox.append(el('div', 'name', '? ? ?'), el('div', 'kind', `${TIER_NAMES[sp.tier]} · ${sp.kind}`));
+        card.append(headRow, el('div', 'desc hint', `"${sp.hint}"`));
+        card.append(el('div', 'meta req', requirementText(st, elDef.name)));
+      }
+      grid.append(card);
+    }
+    body.append(grid);
+
+    const ready = discoverable(att, this.save.discovered).filter(x => x.element === this.grimoireElement).length;
+    const foot = el('div', 'shop-foot');
+    foot.append(el('div', 'note', ready
+      ? `${ready} ${elDef.name} spell${ready === 1 ? '' : 's'} could be found right now. Draw one in a battle.`
+      : 'Wear more of this element to make its deeper spells findable.'));
+    s.append(head, tabs, body, foot);
+    this.show('grimoire');
+  }
+
+  // ---------------------------------------------------------------- gear
+  showGear(): void {
+    this.stopLoop();
+    setMusic('menu');
+    const s = this.screens.gear;
+    s.innerHTML = '';
+    const head = el('div', 'shop-head');
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'GEAR'), el('div', 'coins', fmt(this.save.coins)));
+    const body = el('div', 'shop-body');
+
+    // Set summary: the whole point of collecting one element.
+    const set = setSummary(this.save);
+    const bonus = activeSetBonus(this.save.equipped);
+    if (set) {
+      const elDef = ELEMENT_BY_ID[set.element];
+      const summary = el('div', 'card set-card');
+      summary.style.borderColor = elDef.color;
+      const h = el('div', 'with-icon'); h.append(elementIcon(set.element, 34), document.createTextNode(`${elDef.name} set: ${set.count} of ${SET_SIZE}`));
+      const pips = el('div', 'pips');
+      for (let i = 0; i < SET_SIZE; i++) pips.append(el('span', `pip big ${i < set.count ? 'on' : ''}`));
+      summary.append(h, pips);
+      summary.append(el('div', 'desc', bonus ? `${bonus.bonus.name}: ${bonus.bonus.desc}` : 'Wear two pieces of one element for the first set bonus.'));
+      const nextBonus = SET_BONUSES.find(b => b.pieces > set.count);
+      summary.append(el('div', 'note', nextBonus
+        ? `At ${nextBonus.pieces} pieces: ${nextBonus.desc}`
+        : `Full set: every ${elDef.name} spell is findable now, including its Mythic.`));
+      body.append(summary);
+    }
+
+    for (const slot of EQUIP_SLOTS) {
+      const cur = this.save.equipped[slot.id] ? EQUIP_BY_ID[this.save.equipped[slot.id] as string] : undefined;
+      const title = el('div', 'section-title');
+      const tl = el('span', 'with-icon'); tl.append(slotIcon(slot.id, 26), document.createTextNode(slot.name));
+      title.append(tl, el('small', '', cur ? cur.name : 'empty'));
+      body.append(title);
+      const owned = ownedInSlot(this.save, slot.id);
+      if (!owned.length) { body.append(el('div', 'card', 'Nothing yet. Win levels and open chests.')); continue; }
+      const grid = el('div', 'grid');
+      for (const item of owned) grid.append(this.gearCard(item, cur?.id === item.id));
+      body.append(grid);
+    }
+    s.append(head, body);
+    this.show('gear');
+  }
+
+  private gearCard(item: EquipDef, equipped: boolean): HTMLElement {
+    const elDef = ELEMENT_BY_ID[item.element];
+    const card = el('div', `card ${equipped ? 'equipped' : ''}`);
+    card.style.borderColor = RARITY_COLORS[item.rarity];
+    const headRow = el('div', 'head');
+    const nb = el('div');
+    nb.append(el('div', 'name', item.name), el('div', 'kind', `${RARITY_NAMES[item.rarity]} · ${elDef.name}`));
+    headRow.append(gearIcon(item.slot, item.rarity, 44, elDef.color), nb);
+    card.append(headRow, el('div', 'desc', item.desc));
+    if (equipped) card.append(btn('Worn', 'ghost'));
+    else card.append(btn('Wear', 'green', () => { equipItem(this.save, item.id); this.commit(); this.afterProgress(); this.showGear(); }));
+    return card;
+  }
+
+  /** Shown after a drop or a chest: what you got, and whether it was new. */
+  private showLoot(results: GrantResult[], title: string): void {
+    if (!results.length) return;
+    this.openOverlay((box, close) => {
+      box.append(el('h2', '', title.toUpperCase()));
+      for (const r of results) {
+        const elDef = ELEMENT_BY_ID[r.item.element];
+        const row = el('div', 'row-card loot');
+        row.style.borderColor = RARITY_COLORS[r.item.rarity];
+        row.append(gearIcon(r.item.slot, r.item.rarity, 44, elDef.color));
+        const info = el('div', 'info');
+        info.append(el('div', 'name', r.item.name), el('div', 'kind', `${RARITY_NAMES[r.item.rarity]} · ${elDef.name}`));
+        info.append(el('div', 'desc', r.isNew ? (r.upgrade ? 'New, and equipped' : 'New') : `Duplicate, melted for ${fmt(r.coins)} coins`));
+        row.append(info);
+        box.append(row);
+      }
+      const row = el('div', 'menu-row');
+      row.append(btn('Nice', 'gold', close), btn('Open gear', 'blue', () => { close(); this.showGear(); }));
+      box.append(row);
     });
   }
 
@@ -1230,7 +1471,7 @@ export class UI {
       body.append(row);
     }
     const hatCard = el('div', 'card');
-    hatCard.append(el('div', 'name', 'Hat'), el('div', 'desc', `Wearing: ${HAT_NAMES[this.save.hat]}. Buy and swap hats in the shop.`), btn('Open hat shop', 'blue small', () => this.showShop('hats')));
+    hatCard.append(el('div', 'name', 'Appearance'), el('div', 'desc', 'Your hat, robe and staff colours all come from the gear you are wearing.'), btn('Open gear', 'blue small', () => this.showGear()));
     body.append(hatCard);
     const about = el('div', 'card');
     about.append(el('div', 'name', 'About'), el('div', 'desc', `Wizard 1v1s ${CONFIG.version} by Swag Games. Player id ${this.save.deviceId.slice(0, 8)}.`));
@@ -1244,7 +1485,7 @@ export class UI {
       box.append(el('h2', '', 'RESET?'), el('div', 'note', 'This cannot be undone.'));
       const row = el('div', 'menu-row');
       row.append(btn('Keep my progress', 'gold', close), btn('Reset', 'red', () => {
-        const keep = { deviceId: this.save.deviceId, name: this.save.name, settings: this.save.settings, passes: this.save.passes, hats: this.save.hats };
+        const keep = { deviceId: this.save.deviceId, name: this.save.name, settings: this.save.settings, passes: this.save.passes };
         const fresh = parseSaveFresh();
         Object.assign(this.save, fresh, keep);
         this.pickedLevel = 1; this.commit(); close(); this.showMenu();

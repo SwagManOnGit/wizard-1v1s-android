@@ -1,6 +1,7 @@
 // Battle simulation. No DOM, no three.js: it advances with tick(dt) and emits events
 // that the renderer and HUD consume. Lanes are 0..2 (left, centre, right).
-import { ENEMY_Z, LANE_X, LANES, TRAINING_DUMMY_HP, type EnemyDef, type SpellDef } from './data';
+import { ENEMY_Z, LANE_X, LANES, TRAINING_DUMMY_HP, type EnemyDef } from './data';
+import type { SpellDef } from './spells';
 import type { PlayerStats } from './stats';
 
 export type Side = 'player' | 'enemy';

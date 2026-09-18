@@ -281,3 +281,22 @@ canvas { image-rendering: pixelated; }
 .toast.out { opacity: 0; transition: opacity 0.4s; }
 @keyframes toastin { from { transform: translateY(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
 .overlay .reward { font-size: 34px; }
+
+/* ---------- discovery, grimoire and gear ---------- */
+.spell-card.undiscovered { background: #161042; border-style: dashed; }
+.spell-card.undiscovered .name { color: var(--muted); letter-spacing: 3px; }
+.spell-card.ready { border-color: var(--gold); box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--gold2); animation: readyPulse 1.4s steps(2) infinite; }
+@keyframes readyPulse { 50% { filter: brightness(1.18); } }
+.desc.hint { font-style: italic; color: #9fd0ff; }
+.meta.req { display: block; color: var(--gold); font-size: 16px; }
+.set-card { gap: 8px; }
+.set-card .with-icon { font-size: 22px; color: var(--gold); }
+.row-card.loot { margin-top: 10px; text-align: left; }
+.element-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.element-picker .btn { width: 100%; }
+#grimoire .tabs, #ranks .tabs { flex-wrap: nowrap; }
+#grimoire .tab { min-width: 92px; }
+.spell-chip.fresh { animation: freshChip 1.2s steps(3) 3; }
+@keyframes freshChip { 50% { background: var(--gold); box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--gold2); } }
+.spell-chip.fresh { animation: freshChip 1.2s steps(3) 3; }
+@keyframes freshChip { 50% { background: var(--gold); box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--gold2); } }
