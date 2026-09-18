@@ -7,7 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/selftest.ts"
+    "test": "tsx src/selftest.ts && tsx src/glyphtest.ts && tsx src/campaigntest.ts && tsx src/progressiontest.ts",
+    "test:duel": "tsx src/selftest.ts",
+    "test:glyphs": "tsx src/glyphtest.ts",
+    "test:campaign": "tsx src/campaigntest.ts",
+    "test:progression": "tsx src/progressiontest.ts"
   },
   "dependencies": {
     "colyseus": "^0.16.0",

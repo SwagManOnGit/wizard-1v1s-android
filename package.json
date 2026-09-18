@@ -2,12 +2,17 @@
   "name": "wizard-1v1s-android",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["shared", "app", "server"],
+  "workspaces": [
+    "shared",
+    "app",
+    "server"
+  ],
   "scripts": {
     "dev": "npm run dev -w app",
     "build": "npm run build -w app",
     "server": "npm run dev -w server",
     "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
+    "test": "npm run typecheck && npm run test -w server",
     "android:sync": "npm run build -w app && npx -w app cap sync android",
     "android:open": "npx -w app cap open android"
   }
