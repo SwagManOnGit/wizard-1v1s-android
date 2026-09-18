@@ -12,7 +12,7 @@ import {
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, type Point } from '@wizard/shared';
-import { elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
+import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
@@ -371,10 +371,23 @@ export class UI {
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
 
+  /**
+   * Books tomorrow's reminder, which is also what asks Android for notification permission.
+   *
+   * Never on a cold first launch: a permission prompt over the menu of a game nobody has played
+   * yet is refused, and Android only asks twice before the player has to dig into Settings. So it
+   * waits for the first cleared level, or for the player turning the setting on themselves.
+   */
+  private maybeScheduleReminder(force = false): void {
+    if (!this.save.settings.notifications) return;
+    if (!force && this.save.best < 1) return;
+    void platform.scheduleReminder(1, 'Wizard 1v1s', 'Your daily reward is ready. The tower awaits!', nextRewardTime());
+  }
+
   // ---------------------------------------------------------------- daily reward
   private checkDaily(): void {
     const reward = claimDaily(this.save);
-    if (this.save.settings.notifications) void platform.scheduleReminder(1, 'Wizard 1v1s', 'Your daily reward is ready. The tower awaits!', nextRewardTime());
+    this.maybeScheduleReminder();
     if (!reward) return;
     this.commit();
     platform.haptic('success');
@@ -1074,7 +1087,13 @@ export class UI {
       this.save.wins++;
       if (enemy.boss) this.save.stats.bossWins++;
       if (challenge) markChallengeDone(this.save);
-      if (level > this.save.best && !challenge) { this.save.best = level; void api.postScore(this.save.deviceId, this.save.name, level); }
+      if (level > this.save.best && !challenge) {
+        const first = this.save.best === 0;
+        this.save.best = level;
+        void api.postScore(this.save.deviceId, this.save.name, level);
+        // A wizard who has just cleared their first level has a reason to want reminding.
+        if (first) this.maybeScheduleReminder();
+      }
       if (!challenge) { this.save.level = Math.min(MAX_LEVEL, Math.max(this.save.level, level + 1)); this.pickedLevel = Math.min(MAX_LEVEL, level + 1); }
       if (this.save.settings.haptics) platform.haptic('success');
     } else {
@@ -1507,12 +1526,19 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showSpellbook('known')), el('h1', '', 'CODEX'), el('div', 'coins', `${prog.found} / ${prog.total}`));
 
-    const tabs = el('div', 'tabs');
+    // Ten element names do not fit across a phone, and truncating them to "Arca" and "Eclip"
+    // reads as broken. Each tab is its own emblem instead, with the count beneath it and the full
+    // name spelled out in the section heading below.
+    const tabs = el('div', 'tabs element-tabs');
     for (const e of ELEMENTS) {
       const known = isAttuned(att, e.id);
       const p = prog.byElement[e.id] ?? { found: 0, total: 0 };
-      const t = el('button', `tab ${this.grimoireElement === e.id ? 'active' : ''}`, known ? `${e.name} ${p.found}/${p.total}` : `${e.name} ?`);
-      if (this.grimoireElement !== e.id) t.style.color = e.color;
+      const active = this.grimoireElement === e.id;
+      const t = el('button', `tab element-tab ${active ? 'active' : ''} ${known ? '' : 'locked'}`);
+      t.title = known ? `${e.name}: ${p.found} of ${p.total} found` : `${e.name}: not attuned`;
+      const count = el('span', 'count', known ? `${p.found}/${p.total}` : '?');
+      if (!active) count.style.color = e.color;
+      t.append(elementIcon(e.id, ICON_PX), count);
       t.addEventListener('click', () => { sfx.click(); this.grimoireElement = e.id; this.renderCodex(); });
       tabs.append(t);
     }
@@ -1564,6 +1590,9 @@ export class UI {
 
     // Secrets are not listed above, so the count of "ready" spells would give them away. Only
     // the ones the codex knows about are counted here.
+    const chosen = tabs.querySelector('.element-tab.active') as HTMLElement | null;
+    if (chosen) requestAnimationFrame(() => { tabs.scrollLeft = chosen.offsetLeft - tabs.clientWidth / 2 + chosen.offsetWidth / 2; });
+
     const ready = discoverable(att, this.save.discovered).filter(x => x.element === this.grimoireElement && !x.secret).length;
     const foot = el('div', 'shop-foot');
     foot.append(el('div', 'note', ready
@@ -1696,7 +1725,10 @@ export class UI {
         this.save.settings[key] = !this.save.settings[key];
         if (key === 'music') setMusicEnabled(this.save.settings.music);
         if (key === 'sfx') setSfxEnabled(this.save.settings.sfx);
-        if (key === 'notifications' && !this.save.settings.notifications) void platform.cancelReminders();
+        if (key === 'notifications') {
+          if (this.save.settings.notifications) this.maybeScheduleReminder(true);
+          else void platform.cancelReminders();
+        }
         this.commit(); this.showSettings();
       });
       row.append(info, b);
