@@ -42,6 +42,12 @@ npm run android:open   # opens the project in Android Studio; Run installs on a 
 
 Icons and splash screens are generated from `app/resources/` with `npm run assets -w app` (source art comes from `node app/scripts/make-icon.mjs`).
 
+## Engagement plan
+
+`docs/ENGAGEMENT-PLAN.md` is the retention and engagement roadmap, written against 2026 benchmark
+data: what to instrument, the first-session script, how to turn spell discovery into the growth
+engine, and the reward systems worth building (plus the ones that would hurt this game).
+
 ## Release
 
 Follow `docs/LAUNCH-CHECKLIST.md`. In short: create the Play Console and AdMob accounts, add the signing secrets and ids to GitHub, upload the AAB to internal testing, run the 14-day closed test with 12 testers, then go to production.
