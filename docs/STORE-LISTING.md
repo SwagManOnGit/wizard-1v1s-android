@@ -63,8 +63,8 @@ Screenshot tip: add short captions in the pixel font (DRAW TO CAST, DODGE THE BO
 
 ```
 v0.1.0 — First release
-• 100 levels, 20 bosses, 4 arenas
-• 24 drawable spells, gear, upgrades, hats
+• 500 levels, 100 bosses, 4 arenas
+• 72 drawable spells in the codex, and some that are not
 • Ranked, casual and ghost duels
 • Daily rewards and challenges
 ```

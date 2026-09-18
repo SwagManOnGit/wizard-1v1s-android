@@ -7,7 +7,7 @@
 // tier 4  needs three matching pieces and a steady hand
 // tier 5  needs a full four-piece set of the element; these are meant to stay unfound for a long time
 import type { ElementId, GlyphTier } from './elements';
-import type { GlyphId } from './glyphs';
+import { glyphStroke, type GlyphId, type Point } from './glyphs';
 
 export type SpellKind = 'attack' | 'defense' | 'heal' | 'utility';
 
@@ -17,6 +17,11 @@ export interface SpellDef {
   element: ElementId;
   tier: GlyphTier;
   glyph: GlyphId;
+  /**
+   * Which way the stroke must travel. The codex draws the arrows; the recogniser enforces them.
+   * A glyph drawn backwards is a different spell, so one shape can hold two.
+   */
+  reverse?: boolean;
   kind: SpellKind;
   cost: number;          // mana
   color: string;         // projectiles, particles and icons
@@ -25,6 +30,11 @@ export interface SpellDef {
   hint: string;
   /** True for the handful of spells a new player already knows. */
   starter?: boolean;
+  /**
+   * A spell the codex has never recorded: it is not listed, not counted and not hinted at until
+   * somebody draws it. These are the rumours the game is meant to generate.
+   */
+  secret?: boolean;
   cooldown?: number;
   damage?: number;
   hits?: number;
@@ -212,6 +222,49 @@ export const SPELLS: SpellDef[] = [
   { id: 'eternity', name: 'Eternity', element: 'eclipse', tier: 5, glyph: 'sigil3', kind: 'heal', cost: 95, color: '#ffd0f8', cooldown: 30,
     heal: 140, shield: { amount: 140, dur: 12 }, hot: { perSec: 18, dur: 10 }, cleanse: true, reflect: 5,
     desc: 'Time refuses you. A vast heal, a vast shield, reflection, and every curse undone.', hint: 'They say it cannot be drawn. They are probably right.' },
+
+  // ---------------- APOCRYPHA : nothing below is written in the codex ----------------
+  // Every one of these is an existing sign drawn the other way round. Nobody is told they exist;
+  // they are found by a wizard who wonders what happens when the stroke runs backwards.
+  { id: 'riposte', name: 'Riposte', element: 'arcane', tier: 2, glyph: 'line-h', reverse: true, secret: true, kind: 'defense', cost: 18, color: '#9fd8ff',
+    shield: { amount: 45, dur: 4 }, desc: 'A stroke drawn back the way it came. Absorbs 45 for 4s.', hint: 'Sideways, but the wrong way.' },
+  { id: 'nullsphere', name: 'Nullsphere', element: 'arcane', tier: 4, glyph: 'circle', reverse: true, secret: true, kind: 'attack', cost: 54, color: '#8f7fd8',
+    damage: 78, pierce: true, desc: 'An orb turned inside out: 78 damage that no shield stops.', hint: 'Round, widdershins.' },
+
+  { id: 'backdraft', name: 'Backdraft', element: 'fire', tier: 3, glyph: 'triangle', reverse: true, secret: true, kind: 'attack', cost: 32, color: '#ff9440',
+    damage: 26, dot: { perSec: 13, dur: 4 }, interrupt: true, desc: 'The flame pulled inward, then let go: it interrupts, then burns.', hint: 'Three sides, anticlockwise.' },
+  { id: 'emberfall', name: 'Emberfall', element: 'fire', tier: 5, glyph: 'star', reverse: true, secret: true, kind: 'attack', cost: 78, color: '#ff6a2a',
+    damage: 118, speed: 12, dot: { perSec: 14, dur: 5 }, desc: 'A meteor drawn in reverse falls anyway: 118 damage and a long burn.', hint: 'The star, unmade.' },
+
+  { id: 'frostbite', name: 'Frostbite', element: 'frost', tier: 3, glyph: 'check', reverse: true, secret: true, kind: 'attack', cost: 30, color: '#a8ecff',
+    damage: 26, freeze: 1.8, slow: { factor: 0.55, dur: 5 }, desc: 'The cold gets in the other way: a short freeze and a long chill.', hint: 'A tick, untucked.' },
+
+  { id: 'skyrend', name: 'Skyrend', element: 'storm', tier: 4, glyph: 'bolt', reverse: true, secret: true, kind: 'attack', cost: 58, color: '#fff2b0',
+    damage: 88, speed: 42, pierce: true, desc: 'Lightning drawn upward, the way it actually strikes. 88 piercing damage.', hint: 'From the ground up.' },
+
+  { id: 'witherbloom', name: 'Witherbloom', element: 'nature', tier: 4, glyph: 'rose4', reverse: true, secret: true, kind: 'attack', cost: 50, color: '#8fbf5a',
+    damage: 20, dot: { perSec: 18, dur: 6 }, lifesteal: 0.4, desc: 'Four petals closing: rot that feeds you as it spreads.', hint: 'A bloom, running backwards.' },
+
+  { id: 'waningmoon', name: 'Waning Moon', element: 'shadow', tier: 3, glyph: 'crescent', reverse: true, secret: true, kind: 'attack', cost: 40, color: '#a86cff',
+    damage: 48, pierce: true, lifesteal: 0.5, desc: 'The moon going the other way takes half of what it deals.', hint: 'It sets as easily as it rises.' },
+
+  { id: 'afterglow', name: 'Afterglow', element: 'light', tier: 3, glyph: 'chalice', reverse: true, secret: true, kind: 'heal', cost: 40, color: '#ffeec0',
+    heal: 38, hot: { perSec: 10, dur: 6 }, desc: 'The cup poured out instead of filled: 38 now, then 10 a second for 6s.', hint: 'Empty the cup.' },
+  { id: 'blacksun', name: 'Black Sun', element: 'light', tier: 5, glyph: 'sunburst', reverse: true, secret: true, kind: 'heal', cost: 84, color: '#ffd070',
+    cooldown: 18, heal: 60, damage: 96, cleanse: true, desc: 'Light running backwards: it takes 96 from them and gives 60 to you.', hint: 'Draw the sun, but unwind it.' },
+
+  { id: 'unmaking', name: 'Unmaking', element: 'earth', tier: 5, glyph: 'astroid', reverse: true, secret: true, kind: 'attack', cost: 86, color: '#e0a860',
+    damage: 140, speed: 10, pierce: true, interrupt: true, desc: 'The stone remembers being sand: 140 piercing damage, and their cast dies with it.', hint: 'Four cusps, undone.' },
+
+  { id: 'foresight', name: 'Foresight', element: 'chrono', tier: 3, glyph: 'feather', reverse: true, secret: true, kind: 'utility', cost: 0, color: '#c8fbff',
+    cooldown: 14, mana: 60, desc: 'You already drew it a moment ago. Restores 60 mana.', hint: 'The feather falls upward.' },
+  { id: 'unwind', name: 'Unwind', element: 'chrono', tier: 5, glyph: 'vcoil', reverse: true, secret: true, kind: 'heal', cost: 80, color: '#d0ffff',
+    cooldown: 18, heal: 120, hot: { perSec: 14, dur: 8 }, cleanse: true, desc: 'The last twenty seconds simply did not happen to you.', hint: 'The coil, wound down.' },
+
+  { id: 'newmoon', name: 'New Moon', element: 'eclipse', tier: 5, glyph: 'dspiral', reverse: true, secret: true, kind: 'attack', cost: 88, color: '#ff6ae0',
+    damage: 120, pierce: true, freeze: 2.5, lifesteal: 0.5, desc: 'The dark half of the sign: 120 piercing, a freeze, and half of it comes back to you.', hint: 'The twin spiral, the other way.' },
+  { id: 'zenith', name: 'Zenith', element: 'eclipse', tier: 5, glyph: 'rose5', reverse: true, secret: true, kind: 'defense', cost: 92, color: '#ffd0f8',
+    cooldown: 24, shield: { amount: 260, dur: 12 }, reflect: 5, cleanse: true, desc: 'Nothing reaches you at the top: a shield of 260, five seconds of reflection, every curse gone.', hint: 'Five petals, reversed and closed.' },
 ];
 
 export const SPELL_BY_ID: Record<string, SpellDef> = Object.fromEntries(SPELLS.map(s => [s.id, s]));
@@ -222,7 +275,18 @@ export const SPELLS_BY_ELEMENT: Record<ElementId, SpellDef[]> = SPELLS.reduce((a
 }, {} as Record<ElementId, SpellDef[]>);
 export const BASE_SLOTS = 6;
 
-/** Spells of an element, ordered the way the grimoire lists them. */
-export function elementSpells(el: ElementId): SpellDef[] {
-  return (SPELLS_BY_ELEMENT[el] ?? []).slice().sort((a, b) => a.tier - b.tier || a.cost - b.cost);
+/**
+ * Spells of an element, ordered the way the grimoire lists them. Secret spells are left out unless
+ * the player has already found them, so the codex never hints at how many are missing.
+ */
+export function elementSpells(el: ElementId, known?: readonly string[]): SpellDef[] {
+  return (SPELLS_BY_ELEMENT[el] ?? [])
+    .filter(s => !s.secret || (known ? known.includes(s.id) : true))
+    .sort((a, b) => a.tier - b.tier || a.cost - b.cost);
 }
+
+/** The exact stroke a spell demands, direction included. */
+export function spellStroke(s: SpellDef): Point[] { return glyphStroke(s.glyph, s.reverse); }
+
+/** How many spells the codex admits to: progress counters must never leak the unlisted ones. */
+export const LISTED_SPELLS = SPELLS.filter(s => !s.secret).length;

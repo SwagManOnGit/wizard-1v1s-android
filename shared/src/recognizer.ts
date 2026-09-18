@@ -115,8 +115,12 @@ export function normalize(points: Point[]): Point[] {
 export class Recognizer<T> {
   private templates: Template<T>[] = [];
 
-  /** Adds a template in both stroke directions so left-handed strokes match too. */
-  add(key: T, points: Point[], bothDirections = true): void {
+  /**
+   * Adds a template. Stroke direction is part of the glyph: a circle drawn clockwise and the same
+   * circle drawn anticlockwise are two different spells, which is what doubles the design space.
+   * Pass bothDirections when either way round should count.
+   */
+  add(key: T, points: Point[], bothDirections = false): void {
     this.templates.push({ key, points: normalize(points) });
     if (bothDirections) this.templates.push({ key, points: normalize([...points].reverse()) });
   }

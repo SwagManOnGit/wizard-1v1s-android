@@ -334,24 +334,68 @@ export const GLYPHS: Record<GlyphId, GlyphDef> = {
 
 export const ALL_GLYPH_IDS = Object.keys(GLYPHS) as GlyphId[];
 
-/** Draws a glyph template into a canvas (used for HUD, grimoire and shop icons). */
-export function drawGlyph(ctx: CanvasRenderingContext2D, id: GlyphId, x: number, y: number, size: number, color: string, width = 3): void {
+/**
+ * The stroke a spell demands. Direction is part of the requirement: the same shape drawn the other
+ * way round is a different glyph, which is why one template can carry two spells.
+ */
+export function glyphStroke(id: GlyphId, reverse = false): Point[] {
   const pts = GLYPHS[id].points;
+  return reverse ? [...pts].reverse() : pts;
+}
+
+/** Cumulative length along a polyline, used to space the direction arrows evenly. */
+function walk(pts: Point[], target: number): { p: Point; dx: number; dy: number } {
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-6) continue;
+    if (acc + d >= target) {
+      const t = (target - acc) / d;
+      return { p: { x: pts[i - 1].x + dx * t, y: pts[i - 1].y + dy * t }, dx: dx / d, dy: dy / d };
+    }
+    acc += d;
+  }
+  const n = pts.length - 1;
+  const dx = pts[n].x - pts[n - 1].x, dy = pts[n].y - pts[n - 1].y;
+  const d = Math.max(1e-6, Math.hypot(dx, dy));
+  return { p: pts[n], dx: dx / d, dy: dy / d };
+}
+
+/**
+ * Draws a glyph template into a canvas (HUD, spellbook and shop icons), with a dot on the starting
+ * point and small arrowheads along the path: everything the player needs to know which way to move.
+ */
+export function drawGlyph(ctx: CanvasRenderingContext2D, id: GlyphId, x: number, y: number, size: number, color: string, width = 3, reverse = false): void {
+  const pts = glyphStroke(id, reverse).map(p => ({ x: x + (p.x / 100) * size, y: y + (p.y / 100) * size }));
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  pts.forEach((p, i) => {
-    const px = x + (p.x / 100) * size; const py = y + (p.y / 100) * size;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  });
+  pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
   ctx.stroke();
-  // Start marker so the player knows where the stroke begins.
+
   ctx.fillStyle = color;
+  // Start marker so the player knows where the stroke begins.
   ctx.beginPath();
-  ctx.arc(x + (pts[0].x / 100) * size, y + (pts[0].y / 100) * size, width * 1.1, 0, Math.PI * 2);
+  ctx.arc(pts[0].x, pts[0].y, width * 1.1, 0, Math.PI * 2);
   ctx.fill();
+
+  // Direction arrows. Tiny icons only have room for two.
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  const marks = size < 26 ? [0.4, 0.8] : [0.28, 0.56, 0.86];
+  const a = Math.max(2.2, size * 0.1);
+  for (const f of marks) {
+    const { p, dx, dy } = walk(pts, total * f);
+    ctx.beginPath();
+    ctx.moveTo(p.x + dx * a, p.y + dy * a);
+    ctx.lineTo(p.x - dx * a * 0.55 - dy * a * 0.75, p.y - dy * a * 0.55 + dx * a * 0.75);
+    ctx.lineTo(p.x - dx * a * 0.55 + dy * a * 0.75, p.y - dy * a * 0.55 - dx * a * 0.75);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }

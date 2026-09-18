@@ -356,3 +356,22 @@ canvas { image-rendering: pixelated; }
   #menu.active, #shop.active, #gear.active, #spellbook.active, #market.active, #duel.active,
   #ranks.active, #achievements.active, #settings.active { bottom: 0; left: 96px; }
 }
+
+/* ---------- chapters, wizard level and unrecorded spells ---------- */
+.wiz-level { flex: none; min-width: 54px; padding: 3px 6px 5px; text-align: center; font-size: 28px; line-height: 1; color: var(--gold2);
+  background: var(--blue-dark); border: 3px solid var(--edge); box-shadow: inset -3px -3px 0 #101a5a, inset 3px 3px 0 var(--blue); text-shadow: 2px 2px 0 var(--ink); }
+.wiz-level small { display: block; font-size: 13px; letter-spacing: 2px; color: var(--blue-light); text-shadow: none; }
+.chapter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none; }
+.chapter-row::-webkit-scrollbar { display: none; }
+.chapter { flex: none; padding: 5px 10px; background: var(--win2); color: var(--text); border: 3px solid var(--ink); font-size: 20px; line-height: 1.15;
+  box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 var(--win3); text-align: center; white-space: nowrap; }
+.chapter i { display: block; font-style: normal; font-size: 14px; color: var(--muted); }
+.chapter.active { border-color: var(--gold); color: var(--gold2); background: var(--blue-dark); }
+.chapter.locked { background: #1a1640; color: #5a5490; cursor: default; }
+.chapter.locked i { color: #3f3a70; }
+.level-tile.lord:not(.locked) { border-color: var(--gold); }
+.level-tile.lord:not(.locked) i { color: var(--gold); }
+.levelup { align-self: center; padding: 5px 12px; font-size: 24px; letter-spacing: 2px; color: var(--gold2); background: var(--blue-dark);
+  border: 3px solid var(--gold); text-shadow: 2px 2px 0 var(--ink); animation: blink 0.6s steps(2) 3; }
+.kind.secret { color: var(--magenta); }
+.note.faint { color: #6f68b0; font-size: 15px; margin-top: 4px; }

@@ -3,13 +3,15 @@ import logoUrl from './assets/swag-logo.png';
 import { setMusic, sfx, unlockAudio } from './audio';
 import { Battle, type BattleEvent } from '@wizard/shared';
 import {
-  AD_REWARD, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL, RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
+  AD_REWARD, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
+  RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
   SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
-  activeSetBonus, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel, isAttuned, isBossLevel,
-  openChest, requirementText, rollLevelDrop, shiftColor, spellStatus, upgradePrice,
+  activeSetBonus, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
+  isAttuned, isBossLevel, isChapterBoss,
+  openChest, requirementText, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
-import { GLYPHS, drawGlyph, type Point } from '@wizard/shared';
+import { drawGlyph, type Point } from '@wizard/shared';
 import { elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
@@ -51,7 +53,7 @@ function glyphCanvas(spell: SpellDef, size = 44): HTMLCanvasElement {
   return makePixelCanvas(px, size, g => {
     g.fillStyle = '#1a1250'; g.fillRect(0, 0, px, px);
     g.fillStyle = '#2a2080'; g.fillRect(1, 1, px - 2, px - 2);
-    drawGlyph(g, spell.glyph, px * 0.15, px * 0.15, px * 0.7, spell.color, 2.4);
+    drawGlyph(g, spell.glyph, px * 0.15, px * 0.15, px * 0.7, spell.color, 2.4, spell.reverse);
   });
 }
 
@@ -168,7 +170,11 @@ export class UI {
   private recognizer = new Recognizer<string>();
   /** Separate pool of spells the player has not found yet but could, given their element and gear. */
   private discoveryRec = new Recognizer<string>();
+  /** The same equipped spells armed backwards, purely so a wrong-way stroke can be named. */
+  private mirrorRec = new Recognizer<string>();
   private grimoireElement: ElementId = 'arcane';
+  /** Which block of fifty levels the map is showing. -1 until the first render picks one. */
+  private chapter = -1;
   private loopId = 0;
   private lastT = 0;
   private paused = false;
@@ -285,9 +291,12 @@ export class UI {
 
     // Player bar: who you are, what you have, and a way into the settings.
     const bar = el('div', 'player-bar');
+    const badge = el('div', 'wiz-level');
+    badge.innerHTML = `<small>LV</small>${wizardLevel(this.save.best)}`;
     const idBox = el('div', 'who-box');
-    idBox.append(el('div', 'who-name', this.save.name), el('div', 'who-sub', `Rating ${this.save.rating} · Best ${this.save.best || '-'}`));
-    bar.append(idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
+    idBox.append(el('div', 'who-name', this.save.name), el('div', 'who-sub',
+      `Rating ${this.save.rating} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
+    bar.append(badge, idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
 
     const body = el('div', 'hub-body');
 
@@ -301,30 +310,53 @@ export class UI {
     else chCard.append(btn('Done today', 'ghost'));
     body.append(chCard);
 
-    // The level map.
+    // The level map, cut into chapters of fifty: five hundred tiles at once is a scrollbar, not a map.
     const maxPick = Math.min(MAX_LEVEL, this.save.best + 1);
     if (this.pickedLevel > maxPick) this.pickedLevel = maxPick;
+    const reached = chapterOf(maxPick);
+    if (this.chapter < 0) this.chapter = chapterOf(this.pickedLevel);
+    if (this.chapter > reached) this.chapter = reached;
+    const chapterRow = el('div', 'chapter-row');
     const grid = el('div', 'level-grid');
     const info = el('div', 'level-info');
     const playBtn = btn('BATTLE', 'gold big', () => this.startBattle(this.pickedLevel, false));
-    const tiles: HTMLElement[] = [];
+    const tiles = new Map<number, HTMLElement>();
     const renderInfo = (): void => {
       const e = enemyForLevel(this.pickedLevel);
       const cleared = this.pickedLevel <= this.save.best;
       info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span><small>${fmt(e.hp)} HP · ${e.damage} dmg per hit · ${cleared ? `cleared, replay pays ${fmt(Math.round(e.coins * 0.6))}` : `${fmt(e.coins)} coins`}</small>`;
-      tiles.forEach((t, i) => t.classList.toggle('picked', i + 1 === this.pickedLevel));
+      tiles.forEach((t, L) => t.classList.toggle('picked', L === this.pickedLevel));
       playBtn.textContent = `BATTLE: LEVEL ${this.pickedLevel}`;
     };
-    for (let L = 1; L <= MAX_LEVEL; L++) {
-      const boss = isBossLevel(L);
-      const state = L <= this.save.best ? 'done' : L === maxPick ? 'next' : 'locked';
-      const t = el('button', `level-tile ${state} ${boss ? 'boss' : ''}`);
-      t.innerHTML = `<b>${L}</b>${boss ? '<i>BOSS</i>' : ''}`;
-      if (state === 'locked') t.disabled = true;
-      else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
-      tiles.push(t); grid.append(t);
-    }
-    body.append(grid);
+    const renderChapter = (): void => {
+      chapterRow.innerHTML = ''; grid.innerHTML = ''; tiles.clear();
+      for (let c = 0; c < CHAPTERS; c++) {
+        const locked = c > reached;
+        const t = el('button', `chapter ${c === this.chapter ? 'active' : ''} ${locked ? 'locked' : ''}`);
+        t.innerHTML = `<b>${c * CHAPTER_SIZE + 1}-${(c + 1) * CHAPTER_SIZE}</b><i>${locked ? '???' : chapterName(c)}</i>`;
+        if (locked) t.disabled = true;
+        else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.chapter = c; renderChapter(); });
+        chapterRow.append(t);
+      }
+      const first = this.chapter * CHAPTER_SIZE + 1;
+      for (let L = first; L < first + CHAPTER_SIZE; L++) {
+        const boss = isBossLevel(L);
+        const lord = isChapterBoss(L);
+        const state = L <= this.save.best ? 'done' : L === maxPick ? 'next' : 'locked';
+        const t = el('button', `level-tile ${state} ${boss ? 'boss' : ''} ${lord ? 'lord' : ''}`);
+        t.innerHTML = `<b>${L}</b>${boss ? `<i>${lord ? 'LORD' : 'BOSS'}</i>` : ''}`;
+        if (state === 'locked') t.disabled = true;
+        else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
+        tiles.set(L, t); grid.append(t);
+      }
+      // Scrolled by hand: scrollIntoView would drag every scrollable ancestor sideways with it,
+      // which on a phone means the whole hub slides off screen.
+      const active = chapterRow.querySelector('.chapter.active') as HTMLElement | null;
+      if (active) chapterRow.scrollLeft = active.offsetLeft - chapterRow.clientWidth / 2 + active.offsetWidth / 2;
+      renderInfo();
+    };
+    renderChapter();
+    body.append(chapterRow, grid);
 
     const foot = el('div', 'hub-foot');
     const duelRow = el('div', 'menu-row');
@@ -334,9 +366,8 @@ export class UI {
     foot.append(info, playBtn, duelRow, extraRow);
 
     s.append(bar, body, foot);
-    renderInfo();
     this.show('menu');
-    tiles[this.pickedLevel - 1]?.scrollIntoView({ block: 'center' });
+    tiles.get(this.pickedLevel)?.scrollIntoView({ block: 'center', inline: 'nearest' });
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
 
@@ -839,14 +870,23 @@ export class UI {
     this.drawPad();
   }
 
-  /** Rebuilds both recognisers: the equipped spells, and everything currently discoverable. */
+  /**
+   * Arms the three pools. Every template goes in one direction only: that is what makes the
+   * arrows on a spell icon a requirement rather than decoration, and what lets one shape carry
+   * two different spells. The mirror pool exists so a backwards stroke gets a useful message
+   * instead of a shrug.
+   */
   private armRecognizers(loadout: SpellDef[]): void {
     this.recognizer.clear();
-    for (const s of loadout) this.recognizer.add(s.id, GLYPHS[s.glyph].points);
+    this.mirrorRec.clear();
+    for (const s of loadout) {
+      this.recognizer.add(s.id, spellStroke(s));
+      this.mirrorRec.add(s.id, [...spellStroke(s)].reverse());
+    }
     this.discoveryRec.clear();
     const equipped = new Set(loadout.map(s => s.id));
     for (const s of discoverable(attunement(this.save), this.save.discovered)) {
-      if (!equipped.has(s.id)) this.discoveryRec.add(s.id, GLYPHS[s.glyph].points);
+      if (!equipped.has(s.id)) this.discoveryRec.add(s.id, spellStroke(s));
     }
   }
 
@@ -936,7 +976,14 @@ export class UI {
     this.padFlash = 0.45;
     if (!m || m.score < RECOGNIZE_THRESHOLD) {
       pad.classList.add('bad');
-      this.castMessage(m ? `Unclear... ${SPELL_BY_ID[m.key]?.name ?? ''}?` : 'Draw bigger', true);
+      // The commonest near miss is now the right shape drawn the wrong way round, so name it
+      // and put the arrows back on the pad instead of leaving the player guessing.
+      const back = this.mirrorRec.recognize(this.padPoints);
+      if (back && back.score >= RECOGNIZE_THRESHOLD + 0.06) {
+        const wrongWay = SPELL_BY_ID[back.key];
+        this.castMessage(`${wrongWay.name} runs the other way!`, true);
+        this.padHint = wrongWay; this.padHintT = 2.2;
+      } else this.castMessage(m ? `Unclear... ${SPELL_BY_ID[m.key]?.name ?? ''}?` : 'Draw bigger', true);
       sfx.fizzle();
       return;
     }
@@ -978,7 +1025,7 @@ export class UI {
       // Ghost glyph drawn at the size the spell actually requires (templates fill ~86% of their box).
       const size = (Math.min(w, h) * requiredCoverage(this.padHint)) / 0.86;
       g.save(); g.globalAlpha = 0.35 + Math.min(1, this.padHintT) * 0.3;
-      drawGlyph(g, this.padHint.glyph, (w - size) / 2, (h - size) / 2, size, this.padHint.color, 4 * dpr);
+      drawGlyph(g, this.padHint.glyph, (w - size) / 2, (h - size) / 2, size, this.padHint.color, 4 * dpr, this.padHint.reverse);
       g.restore();
     } else if (!this.padDrawing && this.padPoints.length === 0) {
       g.save(); g.fillStyle = 'rgba(200,190,255,0.35)'; g.font = `${18 * dpr}px "Jersey 10", sans-serif`; g.textAlign = 'center';
@@ -1065,6 +1112,8 @@ export class UI {
     const rew = el('div', 'reward', `+${fmt(reward)} coins`);
     const coins = el('div', 'coins', fmt(this.save.coins));
     card.append(h2, sub, rew, coins);
+    // The campaign level is the account level, so a first clear is a level-up worth announcing.
+    if (outcome === 'win' && level === this.save.best) card.append(el('div', 'levelup', `WIZARD LEVEL ${wizardLevel(this.save.best)}`));
     if (drop) {
       const elDef = ELEMENT_BY_ID[drop.item.element];
       const loot = el('div', 'row-card loot');
@@ -1415,7 +1464,7 @@ export class UI {
         const equipped = this.save.loadout.includes(sp.id);
         const card = el('div', `card spell-card ${equipped ? 'equipped' : ''}`);
         const hr = el('div', 'head'); const nb = el('div');
-        nb.append(el('div', 'name', sp.name), el('div', 'kind', `${TIER_NAMES[sp.tier]} · ${sp.kind}`));
+        nb.append(el('div', 'name', sp.name), el('div', `kind ${sp.secret ? 'secret' : ''}`, `${TIER_NAMES[sp.tier]} · ${sp.kind}${sp.secret ? ' · unrecorded' : ''}`));
         hr.append(glyphCanvas(sp), nb);
         card.append(hr, el('div', 'desc', sp.desc));
         const meta = el('div', 'meta');
@@ -1436,11 +1485,12 @@ export class UI {
       body.append(grid);
     }
     const att = attunement(this.save);
-    const ready = discoverable(att, this.save.discovered).length;
+    const ready = discoverable(att, this.save.discovered).filter(x => !x.secret).length;
     const foot = el('div', 'shop-foot');
     foot.append(el('div', 'note', ready
       ? `${ready} more spell${ready === 1 ? '' : 's'} could be found with what you are wearing. Draw in a battle to find them.`
       : 'Attune to more elements and wear their gear to make new spells findable.'));
+    if (prog.secrets) foot.append(el('div', 'note faint', `${prog.secrets} of your spells ${prog.secrets === 1 ? "is" : "are"} not in the codex at all.`));
     s.append(head, tabs, body, foot);
     this.show('spellbook');
   }
@@ -1479,7 +1529,7 @@ export class UI {
       body.append(locked);
     }
     const grid = el('div', 'grid');
-    for (const sp of elementSpells(this.grimoireElement)) {
+    for (const sp of elementSpells(this.grimoireElement, this.save.discovered)) {
       const st = spellStatus(sp, att, this.save.discovered);
       const equipped = this.save.loadout.includes(sp.id);
       const card = el('div', `card spell-card ${equipped ? 'equipped' : ''} ${st.known ? '' : 'undiscovered'} ${st.reason === 'ready' ? 'ready' : ''}`);
@@ -1487,7 +1537,7 @@ export class UI {
       const nameBox = el('div');
       if (st.known) {
         headRow.append(glyphCanvas(sp), nameBox);
-        nameBox.append(el('div', 'name', sp.name), el('div', 'kind', `${TIER_NAMES[sp.tier]} · ${sp.kind}`));
+        nameBox.append(el('div', 'name', sp.name), el('div', `kind ${sp.secret ? 'secret' : ''}`, `${TIER_NAMES[sp.tier]} · ${sp.kind}${sp.secret ? ' · unrecorded' : ''}`));
         card.append(headRow, el('div', 'desc', sp.desc));
         const meta = el('div', 'meta');
         meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
@@ -1512,11 +1562,14 @@ export class UI {
     }
     body.append(grid);
 
-    const ready = discoverable(att, this.save.discovered).filter(x => x.element === this.grimoireElement).length;
+    // Secrets are not listed above, so the count of "ready" spells would give them away. Only
+    // the ones the codex knows about are counted here.
+    const ready = discoverable(att, this.save.discovered).filter(x => x.element === this.grimoireElement && !x.secret).length;
     const foot = el('div', 'shop-foot');
     foot.append(el('div', 'note', ready
       ? `${ready} ${elDef.name} spell${ready === 1 ? '' : 's'} could be found right now. Draw one in a battle.`
       : 'Wear more of this element to make its deeper spells findable.'));
+    foot.append(el('div', 'note faint', 'The codex holds only what someone wrote down. Not every spell was.'));
     s.append(head, tabs, body, foot);
     this.show('spellbook');
   }

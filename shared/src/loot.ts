@@ -9,7 +9,7 @@ export interface DropRoll { item: EquipDef; duplicate: boolean }
 export function dropChance(level: number, boss: boolean, firstClear: boolean): number {
   if (boss) return 1;
   const base = firstClear ? 0.55 : 0.28;
-  return Math.min(0.85, base + level * 0.002);
+  return Math.min(0.85, base + level * 0.0012);
 }
 
 /**
@@ -17,7 +17,9 @@ export function dropChance(level: number, boss: boolean, firstClear: boolean): n
  * get lucky: that early Mythic is the story they tell other players.
  */
 export function rarityWeights(level: number, boss: boolean): number[] {
-  const t = Math.min(1, level / 100);
+  // Stretched over the long campaign: the top of the drop table arrives around level 200, which
+  // is roughly where a full Mythic set stops being a fantasy.
+  const t = Math.min(1, level / 200);
   const w = [
     Math.max(4, 60 - 50 * t),
     30 + 5 * t,

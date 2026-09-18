@@ -4,7 +4,23 @@ import { ELEMENT_BY_ID, type ElementId } from './elements';
 import { HAT_STYLES, STAFF_STYLES, shiftColor, type HatStyle, type StaffStyle, type WizardLook } from './looks';
 
 export const LANES = 3;
-export const MAX_LEVEL = 100;
+export const MAX_LEVEL = 500;
+/** The map is cut into chapters so five hundred levels stay readable on a phone. */
+export const CHAPTER_SIZE = 50;
+export const CHAPTERS = MAX_LEVEL / CHAPTER_SIZE;
+export function chapterOf(level: number): number { return Math.floor((Math.max(1, level) - 1) / CHAPTER_SIZE); }
+/** Each chapter is named after the kind of wizard who lives there. */
+export function chapterName(chapter: number): string {
+  return TIERS[Math.min(TIERS.length - 1, chapter)].name + 's';
+}
+
+/**
+ * A wizard's account level is simply how far up the tower they are: the level they are facing now.
+ * One number, and it is the same number the campaign is already showing them.
+ */
+export function wizardLevel(best: number): number {
+  return Math.min(MAX_LEVEL, Math.max(1, Math.floor(best) + 1));
+}
 export const ENEMY_Z = -13;   // distance between the two wizards in world units
 export const LANE_X = [-1.7, 0, 1.7];
 
@@ -45,6 +61,9 @@ export const TIERS: EnemyTier[] = [
   { name: 'Archmage', element: 'eclipse', robe: '#d0a030', hat: '#a07820', trim: '#fff6c8', spell: '#ffe066', sky: '#5a4010', floor: '#5a4a20', fog: '#c09a30' },
 ];
 
+/** One returning epithet per lap of the boss roster, so deeper bosses are recognisably worse. */
+export const BOSS_EPITHETS = ['Reborn', 'Unbound', 'Ascendant', 'Eternal'];
+
 export const BOSS_NAMES = [
   'Grumbold the Gray', 'Sister Ember', 'Frostjaw', 'The Hollow Twins', 'Baron Thunderhide',
   'Mortis the Pale', 'Lady Mirage', 'Kraag Hexfist', 'Nullsong', 'Magister Vell',
@@ -59,18 +78,38 @@ export interface EnemyDef {
 }
 
 export function isBossLevel(level: number): boolean { return level % 5 === 0; }
+/** Every fiftieth level closes a chapter, and those bosses hit noticeably harder. */
+export function isChapterBoss(level: number): boolean { return level % CHAPTER_SIZE === 0; }
 
+/** Twenty named bosses, then the same names again wearing worse titles. */
+export function bossName(level: number): string {
+  const i = Math.max(0, Math.round(level / 5) - 1);
+  const lap = Math.floor(i / BOSS_NAMES.length);
+  const name = BOSS_NAMES[i % BOSS_NAMES.length];
+  return lap === 0 ? name : `${name}, ${BOSS_EPITHETS[Math.min(BOSS_EPITHETS.length - 1, lap - 1)]}`;
+}
+
+/**
+ * The difficulty curve, stretched over five hundred levels.
+ *
+ * The health curve is set from measured player damage (see server/src/campaigntest.ts), not from a
+ * guess: a fully kitted wizard sustains about 250 damage a second, so level 500 is roughly five
+ * and a half thousand health and a fight lasts around twenty seconds, or a minute against a
+ * chapter lord. Enemy damage grows more slowly still (L^0.85), because the game is about dodging.
+ */
 export function enemyForLevel(level: number): EnemyDef {
   const L = Math.max(1, level);
   const boss = isBossLevel(L);
-  const tier = TIERS[Math.min(TIERS.length - 1, Math.floor((L - 1) / 10))];
-  const hp = Math.round((80 + 20 * L + 0.75 * L * L) * (boss ? 2.2 : 1));
-  const damage = Math.round((7 + 1.25 * L + 0.004 * L * L) * (boss ? 1.2 : 1));
-  const castInterval = Math.max(0.85, 2.7 - 0.018 * L) * (boss ? 0.85 : 1);
-  const projectileSpeed = 8.5 + 0.05 * L;
-  const telegraph = Math.max(0.35, 0.75 - 0.003 * L);
-  const coins = Math.round((15 + 6 * L + 0.15 * L * L) * (boss ? 3 : 1));
-  const name = boss ? BOSS_NAMES[Math.min(BOSS_NAMES.length - 1, L / 5 - 1)] : `${tier.name} ${romanish(L)}`;
+  const chapterBoss = isChapterBoss(L);
+  const mult = chapterBoss ? 2.2 : boss ? 1.7 : 1;
+  const tier = TIERS[Math.min(TIERS.length - 1, chapterOf(L))];
+  const hp = Math.round((90 + 6 * L + 0.12 * Math.pow(L, 1.6)) * mult);
+  const damage = Math.round((6 + 1.1 * Math.pow(L, 0.85)) * (boss ? 1.2 : 1));
+  const castInterval = Math.max(0.8, 2.6 - 0.0036 * L) * (boss ? 0.85 : 1);
+  const projectileSpeed = Math.min(18, 8.5 + 0.02 * L);
+  const telegraph = Math.max(0.3, 0.75 - 0.0009 * L);
+  const coins = Math.round((15 + 8 * L + 0.02 * Math.pow(L, 1.6)) * (chapterBoss ? 5 : boss ? 3 : 1));
+  const name = boss ? bossName(L) : `${tier.name} ${romanish(L)}`;
   return { level: L, boss, name, tier, hp, damage, castInterval, projectileSpeed, telegraph, coins };
 }
 

@@ -1,5 +1,5 @@
 // Achievements are evaluated from the save after every battle, purchase or duel.
-import { EQUIP_SLOTS, MUNDANE_ELEMENTS, SPELLS } from '@wizard/shared';
+import { EQUIP_SLOTS, LISTED_SPELLS, MAX_LEVEL, MUNDANE_ELEMENTS, SPELLS } from '@wizard/shared';
 import type { SaveData } from '../save';
 
 export interface AchievementDef { id: string; name: string; desc: string; coins: number; done: (s: SaveData) => boolean }
@@ -13,8 +13,17 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'level_25', name: 'Quarter Way', desc: 'Clear level 25.', coins: 300, done: s => s.best >= 25 },
   { id: 'level_50', name: 'Halfway There', desc: 'Clear level 50.', coins: 800, done: s => s.best >= 50 },
   { id: 'level_100', name: 'Archmage', desc: 'Clear level 100.', coins: 5000, done: s => s.best >= 100 },
+  { id: 'level_250', name: 'Halfway to Heaven', desc: 'Clear level 250.', coins: 15000, done: s => s.best >= 250 },
+  { id: 'level_500', name: 'Top of the Tower', desc: `Clear level ${MAX_LEVEL}.`, coins: 50000, done: s => s.best >= MAX_LEVEL },
   { id: 'spells_10', name: 'Collector', desc: 'Discover 10 spells.', coins: 200, done: s => s.discovered.length >= 10 },
-  { id: 'spells_all', name: 'Grand Grimoire', desc: `Discover all ${SPELLS.length} spells.`, coins: 5000, done: s => s.discovered.length >= SPELLS.length },
+  // Counts only the spells the codex admits to: the unlisted ones are a separate award, and
+  // saying how many of those exist would spoil the whole point of them.
+  { id: 'spells_all', name: 'Grand Grimoire', desc: `Discover all ${LISTED_SPELLS} spells in the codex.`, coins: 5000,
+    done: s => SPELLS.filter(x => !x.secret).every(x => s.discovered.includes(x.id)) },
+  { id: 'secret_1', name: 'Apocrypha', desc: 'Discover a spell the codex never recorded.', coins: 2500,
+    done: s => s.discovered.some(id => SPELLS.find(x => x.id === id)?.secret) },
+  { id: 'secret_5', name: 'Heretic Scholar', desc: 'Discover five spells the codex never recorded.', coins: 10000,
+    done: s => s.discovered.filter(id => SPELLS.find(x => x.id === id)?.secret).length >= 5 },
   { id: 'spells_25', name: 'Seeker', desc: 'Discover 25 spells.', coins: 900, done: s => s.discovered.length >= 25 },
   { id: 'mythic_1', name: 'Mythwright', desc: 'Discover a Mythic spell.', coins: 2000, done: s => s.discovered.some(id => SPELLS.find(x => x.id === id)?.tier === 5) },
   { id: 'elements_all', name: 'Polymath', desc: 'Attune to every element.', coins: 3000, done: s => MUNDANE_ELEMENTS.every(e => s.elements.includes(e)) },

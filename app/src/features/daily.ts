@@ -1,5 +1,5 @@
 // Daily login rewards and the daily challenge: the two cheapest retention hooks.
-import { enemyForLevel, type EnemyDef } from '@wizard/shared';
+import { MAX_LEVEL, enemyForLevel, type EnemyDef } from '@wizard/shared';
 import { todayKey, type SaveData } from '../save';
 
 export const DAILY_REWARDS = [60, 90, 130, 180, 250, 350, 500];
@@ -34,7 +34,7 @@ const MODIFIERS = [
 export function dailyChallenge(save: SaveData): Challenge {
   const key = todayKey();
   const seed = [...key].reduce((s, c) => s * 31 + c.charCodeAt(0), 7) >>> 0;
-  const level = Math.max(1, Math.min(100, save.best + 1 + (seed % 3)));
+  const level = Math.max(1, Math.min(MAX_LEVEL, save.best + 1 + (seed % 3)));
   const mod = MODIFIERS[seed % MODIFIERS.length];
   const enemy = { ...enemyForLevel(level), tier: { ...enemyForLevel(level).tier } };
   mod.apply(enemy);

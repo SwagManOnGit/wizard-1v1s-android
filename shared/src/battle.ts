@@ -289,9 +289,11 @@ export class Battle {
   private fire(kind: AttackKind, lanes: number[]): void {
     const e = this.enemy, d = this.enemyDef;
     if (kind === 'heal') {
-      const amt = Math.round(e.maxHp * 0.1);
+      // A tenth of a health bar every twelve seconds outgrew the player somewhere around level
+      // three hundred and turned deep bosses into stalemates. This still punishes a slow kill.
+      const amt = Math.round(e.maxHp * 0.08);
       e.hp = Math.min(e.maxHp, e.hp + amt);
-      e.healCd = 12;
+      e.healCd = 20;
       this.emit({ type: 'heal', who: 'enemy', amount: amt });
       return;
     }

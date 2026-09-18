@@ -5,7 +5,7 @@
 // for a long time after release.
 import { MUNDANE_ELEMENTS, TIER_AFFINITY, TIER_THRESHOLD, type ElementId, type GlyphTier } from './elements';
 import { affinities, SET_SIZE, type EquipSlot } from './equipment';
-import { SPELLS, type SpellDef } from './spells';
+import { LISTED_SPELLS, SPELLS, type SpellDef } from './spells';
 
 export interface Attunement {
   /** Elements the player has paid to attune to. Arcane is always present. */
@@ -75,15 +75,24 @@ export function requirementText(st: SpellStatus, elementName: string): string {
   }
 }
 
-/** Progress for the grimoire header, counted per element. */
-export function discoveryProgress(known: string[]): { found: number; total: number; byElement: Record<string, { found: number; total: number }> } {
+/**
+ * Progress for the grimoire header, counted per element.
+ *
+ * Secret spells are not part of any total until the player has found one: the counter must never
+ * read "6 / 87" and quietly admit that fifteen spells exist which the codex refuses to name.
+ */
+export function discoveryProgress(known: string[]): { found: number; total: number; secrets: number; byElement: Record<string, { found: number; total: number }> } {
   const have = new Set(known);
   const byElement: Record<string, { found: number; total: number }> = {};
-  let found = 0;
+  let found = 0, secrets = 0;
   for (const s of SPELLS) {
     const e = (byElement[s.element] ??= { found: 0, total: 0 });
-    e.total++;
-    if (have.has(s.id)) { e.found++; found++; }
+    const listed = !s.secret || have.has(s.id);
+    if (listed) e.total++;
+    if (have.has(s.id)) {
+      e.found++; found++;
+      if (s.secret) secrets++;
+    }
   }
-  return { found, total: SPELLS.length, byElement };
+  return { found, total: LISTED_SPELLS + secrets, secrets, byElement };
 }
