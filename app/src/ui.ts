@@ -108,15 +108,51 @@ export function showSplash(root: HTMLElement): Promise<void> {
   return new Promise(res => setTimeout(res, 1500));
 }
 
-type ScreenId = 'menu' | 'levels' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements' | 'grimoire' | 'gear';
-type ShopTab = 'elements' | 'chests' | 'upgrades' | 'coins' | 'bank' | 'training';
+type ScreenId = 'menu' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements' | 'spellbook' | 'gear' | 'market';
+type ShopTab = 'elements' | 'chests' | 'upgrades';
+type SpellbookTab = 'known' | 'codex';
+
+/** Simple pixel glyphs for the tab bar. */
+function navIcon(id: ScreenId, size: number): HTMLCanvasElement {
+  return makePixelCanvas(24, size, g => {
+    const s = 24;
+    g.fillStyle = '#ffe9a8';
+    switch (id) {
+      case 'shop':
+        g.fillRect(s * 0.14, s * 0.4, s * 0.72, s * 0.42);
+        g.fillStyle = '#ff7a3d';
+        for (let i = 0; i < 4; i++) g.fillRect(s * 0.14 + i * s * 0.18, s * 0.22, s * 0.09, s * 0.18);
+        break;
+      case 'gear':
+        g.beginPath(); g.moveTo(s * 0.5, s * 0.14); g.lineTo(s * 0.7, s * 0.6); g.lineTo(s * 0.3, s * 0.6); g.closePath(); g.fill();
+        g.fillRect(s * 0.14, s * 0.6, s * 0.72, s * 0.12);
+        break;
+      case 'menu':
+        g.beginPath(); g.moveTo(s * 0.56, s * 0.1); g.lineTo(s * 0.26, s * 0.54); g.lineTo(s * 0.46, s * 0.54);
+        g.lineTo(s * 0.38, s * 0.9); g.lineTo(s * 0.74, s * 0.42); g.lineTo(s * 0.52, s * 0.42); g.closePath(); g.fill();
+        break;
+      case 'spellbook':
+        g.fillStyle = '#6a3a1e'; g.fillRect(s * 0.16, s * 0.16, s * 0.68, s * 0.68);
+        g.fillStyle = '#ffe9a8'; g.fillRect(s * 0.22, s * 0.22, s * 0.44, s * 0.56);
+        g.fillStyle = '#4de1ff'; g.fillRect(s * 0.3, s * 0.36, s * 0.28, s * 0.06); g.fillRect(s * 0.4, s * 0.28, s * 0.08, s * 0.24);
+        break;
+      case 'market':
+        for (let i = 0; i < 3; i++) { g.fillStyle = i === 0 ? '#ffd23f' : '#e0a820'; g.fillRect(s * 0.24, s * 0.62 - i * s * 0.16, s * 0.52, s * 0.14); }
+        break;
+      default:
+        g.fillRect(s * 0.3, s * 0.3, s * 0.4, s * 0.4);
+    }
+  });
+}
 
 export class UI {
   private save: SaveData;
   private onChange: () => void;
   private screens: Record<ScreenId, HTMLElement>;
   private overlay: HTMLElement;
+  private nav: HTMLElement;
   private pickedLevel: number;
+  private spellbookTab: SpellbookTab = 'known';
 
   // Battle.
   private arenaEl: HTMLElement;
@@ -160,14 +196,16 @@ export class UI {
 
     root.innerHTML = '';
     this.screens = {
-      menu: el('div', 'screen'), levels: el('div', 'screen'), battle: el('div', 'screen'), result: el('div', 'screen'), shop: el('div', 'screen'),
+      menu: el('div', 'screen'), battle: el('div', 'screen'), result: el('div', 'screen'), shop: el('div', 'screen'),
       duel: el('div', 'screen'), settings: el('div', 'screen'), ranks: el('div', 'screen'), achievements: el('div', 'screen'),
-      grimoire: el('div', 'screen'), gear: el('div', 'screen'),
+      spellbook: el('div', 'screen'), gear: el('div', 'screen'), market: el('div', 'screen'),
     };
     for (const [id, s] of Object.entries(this.screens)) { s.id = id; root.append(s); }
     this.overlay = el('div', 'overlay');
     this.toasts = el('div', 'toasts');
-    root.append(this.overlay, this.toasts);
+    this.nav = el('div', 'nav');
+    root.append(this.nav, this.overlay, this.toasts);
+    this.buildNav();
     if (webPlatform) {
       webPlatform.fakeAd = () => this.showFakeAd();
       webPlatform.fakePurchase = sku => this.showFakePurchase(sku);
@@ -194,41 +232,111 @@ export class UI {
     });
   }
 
+  /** Screens that keep the tab bar on. The battle and its result take the whole screen. */
+  private static readonly NAV_SCREENS: ScreenId[] = ['menu', 'shop', 'gear', 'spellbook', 'market', 'duel', 'ranks', 'achievements', 'settings'];
+
   private show(id: ScreenId): void {
     if (this.overlayDismiss) this.overlayDismiss();
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('active', k === id);
+    this.nav.classList.toggle('hidden', !UI.NAV_SCREENS.includes(id));
+    this.syncNav(id);
+  }
+
+  /** The five-tab bar: across the bottom in portrait, down the left side in landscape. */
+  private buildNav(): void {
+    const tabs: { id: ScreenId; label: string; go: () => void; main?: boolean }[] = [
+      { id: 'shop', label: 'Shop', go: () => this.showShop('elements') },
+      { id: 'gear', label: 'Gear', go: () => this.showGear() },
+      { id: 'menu', label: 'Battle', go: () => this.showMenu(), main: true },
+      { id: 'spellbook', label: 'Spells', go: () => this.showSpellbook() },
+      { id: 'market', label: 'Market', go: () => this.showMarket() },
+    ];
+    this.nav.innerHTML = '';
+    for (const t of tabs) {
+      const b = el('button', `nav-tab ${t.main ? 'main' : ''}`.trim());
+      b.dataset.screen = t.id;
+      b.append(navIcon(t.id, t.main ? 38 : 28), el('span', 'nav-label', t.label), el('span', 'nav-badge'));
+      b.addEventListener('click', () => { unlockAudio(); sfx.click(); t.go(); });
+      this.nav.append(b);
+    }
+  }
+
+  /** Highlights the active tab and shows the NEW badge over the spellbook. */
+  private syncNav(id: ScreenId): void {
+    for (const b of Array.from(this.nav.children) as HTMLElement[]) {
+      b.classList.toggle('on', b.dataset.screen === id);
+      const badge = b.querySelector('.nav-badge') as HTMLElement | null;
+      if (!badge) continue;
+      const n = b.dataset.screen === 'spellbook' ? this.save.unseen.length : 0;
+      badge.textContent = n ? String(n) : '';
+      badge.classList.toggle('show', n > 0);
+    }
   }
 
   private commit(): void { this.onChange(); }
 
   // ---------------------------------------------------------------- menu
+  /** The home page: player bar, daily challenge, the level map and the battle buttons. */
   showMenu(): void {
     this.stopLoop();
     setMusic('menu');
-    const m = this.screens.menu;
-    m.innerHTML = '';
-    const title = el('div', 'title'); title.innerHTML = 'WIZARD<span>1v1s</span>';
-    const sub = el('div', 'subtitle', '~ Dodge. Draw. Destroy. ~');
-    const card = el('div', 'menu-card frame');
+    const s = this.screens.menu;
+    s.innerHTML = '';
 
-    const topRow = el('div', 'menu-top');
-    const coins = el('div', 'coins', fmt(this.save.coins));
-    const who = el('div', 'who', `${this.save.name} · ${this.save.rating}`);
-    topRow.append(coins, who);
-    const best = el('div', 'stats-line', this.save.best ? `Best: level ${this.save.best} cleared` : 'No levels cleared yet');
-    const play = btn('PLAY', 'gold big', () => this.showLevels());
-    const duelBtn = btn('DUEL', 'red big', () => this.showDuelMenu());
-    const prog = discoveryProgress(this.save.discovered);
-    const row = el('div', 'menu-row');
-    row.append(btn(`Grimoire ${prog.found}/${prog.total}`, 'blue', () => this.showGrimoire()), btn('Gear', 'blue', () => this.showGear()));
-    const row1 = el('div', 'menu-row');
-    row1.append(btn('Shop', 'green', () => this.showShop('elements')), btn('Training', 'green', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true)));
-    const row2 = el('div', 'menu-row');
-    row2.append(btn('Ranks', 'ghost', () => this.showRanks()), btn('Awards', 'ghost', () => this.showAchievements()), btn('Settings', 'ghost', () => this.showSettings()));
-    card.append(topRow, play, duelBtn, row, row1, row2, best);
-    const howto = el('div', 'howto', 'Draw a spell glyph on the pad to cast it. Spells lock on by themselves. Tap the side buttons (or swipe) to dodge the enemy\'s bolts. Win coins, buy spells, beat 100 levels.');
-    m.append(title, sub, card, howto);
+    // Player bar: who you are, what you have, and a way into the settings.
+    const bar = el('div', 'player-bar');
+    const idBox = el('div', 'who-box');
+    idBox.append(el('div', 'who-name', this.save.name), el('div', 'who-sub', `Rating ${this.save.rating} · Best ${this.save.best || '-'}`));
+    bar.append(idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
+
+    const body = el('div', 'hub-body');
+
+    // Daily challenge sits at the top: one modified fight a day for triple coins.
+    const ch = dailyChallenge(this.save);
+    const chCard = el('div', 'card challenge');
+    const chInfo = el('div');
+    chInfo.append(el('div', 'name', ch.name), el('div', 'desc', `${ch.desc} Level ${ch.level}: ${ch.enemy.name}. Triple coins.`));
+    chCard.append(chInfo);
+    if (challengeAvailable(this.save)) chCard.append(btn('FIGHT', 'gold', () => this.startBattle(ch.level, false, ch)));
+    else chCard.append(btn('Done today', 'ghost'));
+    body.append(chCard);
+
+    // The level map.
+    const maxPick = Math.min(MAX_LEVEL, this.save.best + 1);
+    if (this.pickedLevel > maxPick) this.pickedLevel = maxPick;
+    const grid = el('div', 'level-grid');
+    const info = el('div', 'level-info');
+    const playBtn = btn('BATTLE', 'gold big', () => this.startBattle(this.pickedLevel, false));
+    const tiles: HTMLElement[] = [];
+    const renderInfo = (): void => {
+      const e = enemyForLevel(this.pickedLevel);
+      const cleared = this.pickedLevel <= this.save.best;
+      info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span><small>${fmt(e.hp)} HP · ${e.damage} dmg per hit · ${cleared ? `cleared, replay pays ${fmt(Math.round(e.coins * 0.6))}` : `${fmt(e.coins)} coins`}</small>`;
+      tiles.forEach((t, i) => t.classList.toggle('picked', i + 1 === this.pickedLevel));
+      playBtn.textContent = `BATTLE: LEVEL ${this.pickedLevel}`;
+    };
+    for (let L = 1; L <= MAX_LEVEL; L++) {
+      const boss = isBossLevel(L);
+      const state = L <= this.save.best ? 'done' : L === maxPick ? 'next' : 'locked';
+      const t = el('button', `level-tile ${state} ${boss ? 'boss' : ''}`);
+      t.innerHTML = `<b>${L}</b>${boss ? '<i>BOSS</i>' : ''}`;
+      if (state === 'locked') t.disabled = true;
+      else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
+      tiles.push(t); grid.append(t);
+    }
+    body.append(grid);
+
+    const foot = el('div', 'hub-foot');
+    const duelRow = el('div', 'menu-row');
+    duelRow.append(btn('DUEL', 'red', () => this.showDuelMenu()), btn('Training', 'green', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true)));
+    const extraRow = el('div', 'menu-row');
+    extraRow.append(btn('Ranks', 'ghost small', () => this.showRanks()), btn('Awards', 'ghost small', () => this.showAchievements()));
+    foot.append(info, playBtn, duelRow, extraRow);
+
+    s.append(bar, body, foot);
+    renderInfo();
     this.show('menu');
+    tiles[this.pickedLevel - 1]?.scrollIntoView({ block: 'center' });
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
 
@@ -275,51 +383,6 @@ export class UI {
     return false;
   }
 
-  showLevels(): void {
-    this.stopLoop();
-    setMusic('menu');
-    const s = this.screens.levels;
-    s.innerHTML = '';
-    const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'CHOOSE A LEVEL'), el('div', 'coins', fmt(this.save.coins)));
-    const body = el('div', 'levels-body');
-    // Daily challenge: one modified fight per day for triple coins.
-    const ch = dailyChallenge(this.save);
-    const chCard = el('div', 'card challenge');
-    const chInfo = el('div');
-    chInfo.append(el('div', 'name', ch.name), el('div', 'desc', `${ch.desc} Level ${ch.level}: ${ch.enemy.name}. Triple coins.`));
-    chCard.append(chInfo);
-    if (challengeAvailable(this.save)) chCard.append(btn('FIGHT', 'gold', () => this.startBattle(ch.level, false, ch)));
-    else chCard.append(btn('Done today', 'ghost'));
-    body.append(chCard);
-    const grid = el('div', 'level-grid');
-    const maxPick = Math.min(MAX_LEVEL, this.save.best + 1);
-    if (this.pickedLevel > maxPick) this.pickedLevel = maxPick;
-    const info = el('div', 'level-info');
-    const foot = el('div', 'shop-foot');
-    const tiles: HTMLElement[] = [];
-    const renderInfo = (): void => {
-      const e = enemyForLevel(this.pickedLevel);
-      const cleared = this.pickedLevel <= this.save.best;
-      info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span><small>${fmt(e.hp)} HP · ${e.damage} dmg per hit · ${cleared ? `cleared, replay pays ${fmt(Math.round(e.coins * 0.6))}` : `${fmt(e.coins)} coins`}</small>`;
-      tiles.forEach((t, i) => t.classList.toggle('picked', i + 1 === this.pickedLevel));
-    };
-    for (let L = 1; L <= MAX_LEVEL; L++) {
-      const boss = isBossLevel(L);
-      const state = L <= this.save.best ? 'done' : L === maxPick ? 'next' : 'locked';
-      const t = el('button', `level-tile ${state} ${boss ? 'boss' : ''}`);
-      t.innerHTML = `<b>${L}</b>${boss ? '<i>BOSS</i>' : ''}`;
-      if (state === 'locked') t.disabled = true;
-      else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
-      tiles.push(t); grid.append(t);
-    }
-    body.append(grid);
-    foot.append(btn('BATTLE', 'gold big', () => this.startBattle(this.pickedLevel, false)));
-    s.append(head, body, info, foot);
-    renderInfo();
-    this.show('levels');
-    tiles[this.pickedLevel - 1]?.scrollIntoView({ block: 'center' });
-  }
 
   // ---------------------------------------------------------------- battle
   private startBattle(level: number, training: boolean, challenge: Challenge | null = null): void {
@@ -613,7 +676,7 @@ export class UI {
     const inBattle = this.screens.battle.classList.contains('active') && this.battle;
     if (e.key === 'Escape') {
       if (this.overlay.classList.contains('active')) { if (this.overlayDismiss) this.overlayDismiss(); return; }
-      if (this.screens.shop.classList.contains('active') || this.screens.result.classList.contains('active') || this.screens.levels.classList.contains('active')) { this.showMenu(); return; }
+      if (!this.screens.menu.classList.contains('active') && !this.screens.battle.classList.contains('active')) { this.showMenu(); return; }
       if (inBattle) { if (this.training) this.leaveTraining(); else this.confirmForfeit(); }
       return;
     }
@@ -805,14 +868,37 @@ export class UI {
     this.save.discovered.push(spell.id);
     const stats = computeStats(this.save);
     if (!this.save.loadout.includes(spell.id) && this.save.loadout.length < stats.slots) this.save.loadout.push(spell.id);
+    this.save.unseen.push(spell.id);
     this.commit();
     this.afterProgress();
     if (this.save.settings.haptics) platform.haptic('success');
     sfx.win();
-    const elName = ELEMENT_BY_ID[spell.element].name;
-    this.banner('DISCOVERED', `${spell.name} · ${elName}`);
-    this.toast(`${spell.name} discovered`, `${TIER_NAMES[spell.tier]} ${elName} spell`);
     this.arena?.flashDiscovery(ELEMENT_BY_ID[spell.element].color);
+    this.showDiscovery(spell);
+  }
+
+  /**
+   * The in-game notification for a new spell: a card that slides over the arena for a few seconds
+   * without pausing the fight, so the moment lands but the duel carries on.
+   */
+  private showDiscovery(spell: SpellDef): void {
+    const elDef = ELEMENT_BY_ID[spell.element];
+    const card = el('div', 'discovery frame');
+    card.style.borderColor = elDef.color;
+    const header = el('div', 'discovery-head', 'NEW SPELL DISCOVERED');
+    header.style.color = elDef.color;
+    const row = el('div', 'discovery-row');
+    row.append(glyphCanvas(spell, 56));
+    const info = el('div', 'discovery-info');
+    info.append(el('div', 'discovery-name', spell.name));
+    const sub = el('div', 'discovery-sub', `${TIER_NAMES[spell.tier]} · ${elDef.name} · ${spell.kind}`);
+    sub.style.color = elDef.color;
+    info.append(sub, el('div', 'discovery-desc', spell.desc));
+    row.append(info);
+    card.append(header, row, el('div', 'discovery-foot', 'Added to your spellbook'));
+    this.arenaOverlay.append(card);
+    setTimeout(() => card.classList.add('out'), 3600);
+    setTimeout(() => card.remove(), 4200);
   }
 
   private finishStroke(): void {
@@ -1003,7 +1089,7 @@ export class UI {
     this.stopLoop();
     this.battle = null;
     this.arena?.setRunning(false);
-    this.showShop('training');
+    this.showMenu();
   }
 
   private overlayDismiss: (() => void) | null = null;
@@ -1058,7 +1144,7 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SHOP'), el('div', 'coins', fmt(this.save.coins)));
     const tabs = el('div', 'tabs');
-    const names: [ShopTab, string][] = [['elements', 'Elements'], ['chests', 'Chests'], ['upgrades', 'Upgrades'], ['coins', 'Coins'], ['bank', 'Bank'], ['training', 'Training']];
+    const names: [ShopTab, string][] = [['elements', 'Elements'], ['chests', 'Chests'], ['upgrades', 'Upgrades']];
     for (const [id, label] of names) {
       const t = el('button', `tab ${this.shopTab === id ? 'active' : ''}`, label);
       t.addEventListener('click', () => { sfx.click(); this.shopTab = id; this.renderShop(); });
@@ -1069,14 +1155,8 @@ export class UI {
       case 'elements': this.renderElements(body); break;
       case 'upgrades': this.renderUpgrades(body); break;
       case 'chests': this.renderChests(body); break;
-      case 'coins': this.renderCoins(body); break;
-      case 'bank': this.renderBank(body); break;
-      case 'training': this.renderTraining(body); break;
     }
-    const foot = el('div', 'shop-foot');
-    const lvl = Math.min(MAX_LEVEL, this.pickedLevel);
-    foot.append(btn(`BATTLE: LEVEL ${lvl}`, 'gold', () => this.startBattle(lvl, false)));
-    s.append(head, tabs, body, foot);
+    s.append(head, tabs, body);
     body.scrollTop = scrollTop;
   }
 
@@ -1281,18 +1361,101 @@ export class UI {
     });
   }
 
-  // ---------------------------------------------------------------- grimoire
-  /** Every spell in the game, most of them silhouettes until you draw them. */
-  showGrimoire(): void {
+  // ---------------------------------------------------------------- spellbook
+  /**
+   * Two views of the same book: "Known" is the collection of spells you have actually found and
+   * the place you build a loadout, "Codex" is every spell in the game with the unfound ones as
+   * silhouettes and a hint.
+   */
+  showSpellbook(tab: SpellbookTab = this.spellbookTab): void {
+    this.spellbookTab = tab;
+    // Opening the book is what clears the NEW badge.
+    if (this.save.unseen.length) { this.save.unseen = []; this.commit(); }
+    if (tab === 'known') this.renderKnownSpells();
+    else this.renderCodex();
+  }
+
+  private renderKnownSpells(): void {
     this.stopLoop();
     setMusic('menu');
-    const s = this.screens.grimoire;
+    const s = this.screens.spellbook;
+    s.innerHTML = '';
+    const stats = computeStats(this.save);
+    const prog = discoveryProgress(this.save.discovered);
+    const head = el('div', 'shop-head');
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SPELLBOOK'), el('div', 'coins', `${prog.found} / ${prog.total}`));
+    const tabs = el('div', 'tabs');
+    const mk = (id: SpellbookTab, label: string): void => {
+      const t = el('button', `tab ${this.spellbookTab === id ? 'active' : ''}`, label);
+      t.addEventListener('click', () => { sfx.click(); this.showSpellbook(id); });
+      tabs.append(t);
+    };
+    mk('known', `Known ${prog.found}`);
+    mk('codex', `Codex ${prog.total}`);
+
+    const body = el('div', 'shop-body');
+    const title = el('div', 'section-title');
+    title.innerHTML = `Loadout <small>${this.save.loadout.length} / ${stats.slots} slots. Only equipped spells can be cast in battle.</small>`;
+    body.append(title);
+
+    // Known spells, grouped by element so a collection reads at a glance.
+    const known = SPELLS.filter(sp => this.save.discovered.includes(sp.id));
+    const byElement = new Map<ElementId, SpellDef[]>();
+    for (const sp of known) { const arr = byElement.get(sp.element) ?? []; arr.push(sp); byElement.set(sp.element, arr); }
+    for (const e of ELEMENTS) {
+      const list = byElement.get(e.id);
+      if (!list) continue;
+      const p = prog.byElement[e.id] ?? { found: 0, total: 0 };
+      const st = el('div', 'section-title');
+      const tl = el('span', 'with-icon'); tl.append(elementIcon(e.id, 26), document.createTextNode(e.name));
+      st.append(tl, el('small', '', `${p.found} of ${p.total} found`));
+      body.append(st);
+      const grid = el('div', 'grid');
+      for (const sp of list.sort((a, b) => a.tier - b.tier)) {
+        const equipped = this.save.loadout.includes(sp.id);
+        const card = el('div', `card spell-card ${equipped ? 'equipped' : ''}`);
+        const hr = el('div', 'head'); const nb = el('div');
+        nb.append(el('div', 'name', sp.name), el('div', 'kind', `${TIER_NAMES[sp.tier]} · ${sp.kind}`));
+        hr.append(glyphCanvas(sp), nb);
+        card.append(hr, el('div', 'desc', sp.desc));
+        const meta = el('div', 'meta');
+        meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
+        card.append(meta);
+        if (equipped) {
+          const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.showSpellbook('known'); });
+          b.disabled = this.save.loadout.length <= 1;
+          card.append(b);
+        } else {
+          const b = btn('Equip', 'green', () => { this.save.loadout.push(sp.id); this.commit(); this.showSpellbook('known'); });
+          b.disabled = this.save.loadout.length >= stats.slots;
+          if (b.disabled) b.textContent = 'Loadout full';
+          card.append(b);
+        }
+        grid.append(card);
+      }
+      body.append(grid);
+    }
+    const att = attunement(this.save);
+    const ready = discoverable(att, this.save.discovered).length;
+    const foot = el('div', 'shop-foot');
+    foot.append(el('div', 'note', ready
+      ? `${ready} more spell${ready === 1 ? '' : 's'} could be found with what you are wearing. Draw in a battle to find them.`
+      : 'Attune to more elements and wear their gear to make new spells findable.'));
+    s.append(head, tabs, body, foot);
+    this.show('spellbook');
+  }
+
+  /** The full list, including everything still unfound. */
+  private renderCodex(): void {
+    this.stopLoop();
+    setMusic('menu');
+    const s = this.screens.spellbook;
     s.innerHTML = '';
     const att = attunement(this.save);
     const stats = computeStats(this.save);
     const prog = discoveryProgress(this.save.discovered);
     const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'GRIMOIRE'), el('div', 'coins', `${prog.found} / ${prog.total}`));
+    head.append(btn('◀', 'small ghost', () => this.showSpellbook('known')), el('h1', '', 'CODEX'), el('div', 'coins', `${prog.found} / ${prog.total}`));
 
     const tabs = el('div', 'tabs');
     for (const e of ELEMENTS) {
@@ -1300,7 +1463,7 @@ export class UI {
       const p = prog.byElement[e.id] ?? { found: 0, total: 0 };
       const t = el('button', `tab ${this.grimoireElement === e.id ? 'active' : ''}`, known ? `${e.name} ${p.found}/${p.total}` : `${e.name} ?`);
       if (this.grimoireElement !== e.id) t.style.color = e.color;
-      t.addEventListener('click', () => { sfx.click(); this.grimoireElement = e.id; this.showGrimoire(); });
+      t.addEventListener('click', () => { sfx.click(); this.grimoireElement = e.id; this.renderCodex(); });
       tabs.append(t);
     }
 
@@ -1330,11 +1493,11 @@ export class UI {
         meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
         card.append(meta);
         if (equipped) {
-          const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.showGrimoire(); });
+          const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.renderCodex(); });
           b.disabled = this.save.loadout.length <= 1;
           card.append(b);
         } else {
-          const b = btn('Equip', 'green', () => { this.save.loadout.push(sp.id); this.commit(); this.showGrimoire(); });
+          const b = btn('Equip', 'green', () => { this.save.loadout.push(sp.id); this.commit(); this.renderCodex(); });
           b.disabled = this.save.loadout.length >= stats.slots;
           if (b.disabled) b.textContent = 'Loadout full';
           card.append(b);
@@ -1355,7 +1518,7 @@ export class UI {
       ? `${ready} ${elDef.name} spell${ready === 1 ? '' : 's'} could be found right now. Draw one in a battle.`
       : 'Wear more of this element to make its deeper spells findable.'));
     s.append(head, tabs, body, foot);
-    this.show('grimoire');
+    this.show('spellbook');
   }
 
   // ---------------------------------------------------------------- gear
@@ -1437,6 +1600,22 @@ export class UI {
       row.append(btn('Nice', 'gold', close), btn('Open gear', 'blue', () => { close(); this.showGear(); }));
       box.append(row);
     });
+  }
+
+  // ---------------------------------------------------------------- marketplace
+  /** Real money, rewarded ads and offers. Coins earned in play are spent in the Shop tab instead. */
+  showMarket(): void {
+    this.stopLoop();
+    setMusic('menu');
+    const s = this.screens.market;
+    s.innerHTML = '';
+    const head = el('div', 'shop-head');
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'MARKETPLACE'), el('div', 'coins', fmt(this.save.coins)));
+    const body = el('div', 'shop-body');
+    this.renderCoins(body);
+    this.renderBank(body);
+    s.append(head, body);
+    this.show('market');
   }
 
   // ---------------------------------------------------------------- settings, ranks, achievements
@@ -1550,24 +1729,6 @@ export class UI {
     this.show('achievements');
   }
 
-  private renderTraining(body: HTMLElement): void {
-    const card = el('div', 'card ad-card');
-    card.append(el('div', 'name', 'Training grounds'),
-      el('div', 'desc', 'Practice your glyphs on a dummy with endless health. See your damage and DPS, toggle the dummy to fight back to rehearse dodges, refill any time. No coins, no risk.'));
-    card.append(btn('ENTER TRAINING', 'green big', () => this.startBattle(Math.max(1, this.save.best), true)));
-    body.append(card);
-    const ref = el('div', 'card');
-    ref.append(el('div', 'name', 'Your glyphs'), el('div', 'desc', 'Tap a spell in battle to see its glyph on the pad. The dot marks where the stroke starts, but either direction works.'));
-    const grid = el('div', 'grid');
-    for (const id of this.save.loadout) {
-      const sp = SPELL_BY_ID[id]; if (!sp) continue;
-      const c = el('div', 'card'); const head = el('div', 'head'); const nb = el('div');
-      nb.append(el('div', 'name', sp.name), el('div', 'kind', GLYPHS[sp.glyph].label));
-      head.append(glyphCanvas(sp), nb); c.append(head); grid.append(c);
-    }
-    ref.append(grid);
-    body.append(ref);
-  }
 
   // ---------------------------------------------------------------- fake ad (outside YouTube)
   showFakeAd(): Promise<boolean> {

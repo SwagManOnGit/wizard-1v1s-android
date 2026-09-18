@@ -33,8 +33,14 @@ function toUnlit(src: THREE.Material): THREE.MeshBasicMaterial {
   return m;
 }
 
-const HAT_NODES: Record<HatStyle, string> = { pointy: 'Hat_Pointy', hood: 'Hat_Hood', crown: 'Hat_Crown', horns: 'Hat_Horns', wide: 'Hat_Wide', turban: 'Hat_Turban' };
-const STAFF_NODES: Record<StaffStyle, string> = { claw: 'Staff_Claw', crystal: 'Staff_Crystal', ring: 'Staff_Ring', blade: 'Staff_Blade', skull: 'Staff_Skull', leaf: 'Staff_Leaf' };
+const HAT_NODES: Record<HatStyle, string> = {
+  pointy: 'Hat_Pointy', hood: 'Hat_Hood', crown: 'Hat_Crown', horns: 'Hat_Horns', wide: 'Hat_Wide', turban: 'Hat_Turban',
+  halo: 'Hat_Halo', helm: 'Hat_Helm', veil: 'Hat_Veil',
+};
+const STAFF_NODES: Record<StaffStyle, string> = {
+  claw: 'Staff_Claw', crystal: 'Staff_Crystal', ring: 'Staff_Ring', blade: 'Staff_Blade', skull: 'Staff_Skull', leaf: 'Staff_Leaf',
+  sun: 'Staff_Sun', hammer: 'Staff_Hammer', hourglass: 'Staff_Hourglass',
+};
 
 // ---- helpers ------------------------------------------------------------------
 function glowTexture(): THREE.Texture {

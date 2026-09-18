@@ -39,8 +39,8 @@ const allSix: Attunement = { elements: [...MUNDANE_ELEMENTS], equipped: allButOn
 const eclipseSpells = SPELLS.filter(s => s.element === 'eclipse');
 const lockedCount = eclipseSpells.filter(s => canDiscover(s, allButOne)).length;
 const openCount = eclipseSpells.filter(s => canDiscover(s, allSix)).length;
-console.log(`  with five elements: ${lockedCount} open (expected 0)`);
-console.log(`  with all six plus a full Mythic set: ${openCount} of ${eclipseSpells.length} open`);
+console.log(`  with all but one element: ${lockedCount} open (expected 0)`);
+console.log(`  with every element plus a full Mythic set: ${openCount} of ${eclipseSpells.length} open`);
 if (lockedCount !== 0) throw new Error('eclipse must stay shut');
 if (openCount !== eclipseSpells.length) throw new Error('eclipse should open with every element and a full set');
 

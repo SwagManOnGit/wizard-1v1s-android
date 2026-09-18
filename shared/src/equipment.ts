@@ -31,12 +31,14 @@ export interface EquipDef {
 
 /** Which 3D staff head an element's staff shows. */
 export const ELEMENT_STAFF: Record<ElementId, StaffStyle> = {
-  arcane: 'claw', fire: 'blade', frost: 'crystal', storm: 'ring', nature: 'leaf', shadow: 'skull', eclipse: 'ring',
+  arcane: 'claw', fire: 'blade', frost: 'crystal', storm: 'ring', nature: 'leaf', shadow: 'skull',
+  light: 'sun', earth: 'hammer', chrono: 'hourglass', eclipse: 'ring',
 };
 
 /** Which 3D hat a wizard wears when this element's headgear is equipped. */
 export const ELEMENT_HAT: Record<ElementId, HatStyle> = {
-  arcane: 'pointy', fire: 'wide', frost: 'hood', storm: 'crown', nature: 'turban', shadow: 'horns', eclipse: 'crown',
+  arcane: 'pointy', fire: 'wide', frost: 'hood', storm: 'crown', nature: 'turban', shadow: 'horns',
+  light: 'halo', earth: 'helm', chrono: 'veil', eclipse: 'crown',
 };
 
 const ADJECTIVES: Record<ElementId, [string, string, string, string, string]> = {
@@ -46,6 +48,9 @@ const ADJECTIVES: Record<ElementId, [string, string, string, string, string]> = 
   storm: ['Breezy', 'Charged', 'Thunderborn', 'Tempest', 'Skyforged'],
   nature: ['Mossy', 'Verdant', 'Thornwoven', 'Wildheart', 'Worldroot'],
   shadow: ['Dusky', 'Shrouded', 'Nightbound', 'Umbral', 'Voidforged'],
+  light: ['Candle', 'Gilded', 'Radiant', 'Seraph', 'Dawnforged'],
+  earth: ['Clay', 'Stonecut', 'Granite', 'Mountainborn', 'Worldstone'],
+  chrono: ['Ticking', 'Winding', 'Hourbound', 'Aeon', 'Timeless'],
   eclipse: ['Dimmed', 'Waning', 'Penumbral', 'Totality', 'Eclipsed'],
 };
 

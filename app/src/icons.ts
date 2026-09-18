@@ -143,6 +143,9 @@ export function elementIcon(id: ElementId, size = 44): HTMLCanvasElement {
       case 'storm':    g.beginPath(); g.moveTo(s * 0.62, s * 0.2); g.lineTo(s * 0.36, s * 0.52); g.lineTo(s * 0.52, s * 0.52); g.lineTo(s * 0.38, s * 0.82); g.lineTo(s * 0.66, s * 0.46); g.lineTo(s * 0.5, s * 0.46); g.closePath(); g.fill(); break;
       case 'nature':   g.beginPath(); g.ellipse(s * 0.5, s * 0.5, s * 0.16, s * 0.3, Math.PI / 4, 0, Math.PI * 2); g.fill(); break;
       case 'shadow':   g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.3, 0, Math.PI * 2); g.fill(); g.fillStyle = '#1e1a5a'; g.beginPath(); g.arc(s * 0.62, s * 0.42, s * 0.26, 0, Math.PI * 2); g.fill(); break;
+      case 'light':    g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.16, 0, Math.PI * 2); g.fill(); stroke(g, c, s * 0.05); for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; g.beginPath(); g.moveTo(s * 0.5 + Math.cos(a) * s * 0.24, s * 0.5 + Math.sin(a) * s * 0.24); g.lineTo(s * 0.5 + Math.cos(a) * s * 0.34, s * 0.5 + Math.sin(a) * s * 0.34); g.stroke(); } break;
+      case 'earth':    g.beginPath(); g.moveTo(s * 0.18, s * 0.74); g.lineTo(s * 0.38, s * 0.34); g.lineTo(s * 0.54, s * 0.58); g.lineTo(s * 0.68, s * 0.28); g.lineTo(s * 0.84, s * 0.74); g.closePath(); g.fill(); break;
+      case 'chrono':   stroke(g, c, s * 0.06); g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.28, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(s * 0.5, s * 0.5); g.lineTo(s * 0.5, s * 0.3); g.moveTo(s * 0.5, s * 0.5); g.lineTo(s * 0.66, s * 0.58); g.stroke(); break;
       case 'eclipse':  g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.3, 0, Math.PI * 2); g.fill(); g.fillStyle = '#1e1a5a'; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.19, 0, Math.PI * 2); g.fill(); break;
     }
   });

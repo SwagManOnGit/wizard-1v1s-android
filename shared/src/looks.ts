@@ -1,11 +1,11 @@
 // Wizard appearance types and colour helpers. Kept separate from data.ts so equipment can name a
 // hat style without pulling in the whole balance table.
 
-export const HAT_STYLES = ['pointy', 'hood', 'crown', 'horns', 'wide', 'turban'] as const;
+export const HAT_STYLES = ['pointy', 'hood', 'crown', 'horns', 'wide', 'turban', 'halo', 'helm', 'veil'] as const;
 export type HatStyle = typeof HAT_STYLES[number];
 
 /** Staff heads, so the staff slot is visible on the model rather than just a stat line. */
-export const STAFF_STYLES = ['claw', 'crystal', 'ring', 'blade', 'skull', 'leaf'] as const;
+export const STAFF_STYLES = ['claw', 'crystal', 'ring', 'blade', 'skull', 'leaf', 'sun', 'hammer', 'hourglass'] as const;
 export type StaffStyle = typeof STAFF_STYLES[number];
 
 export interface WizardLook {

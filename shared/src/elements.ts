@@ -1,7 +1,7 @@
 // Elements are the spine of the new progression: spells belong to an element, equipment is forged
 // from an element, and how much of that element you wear decides how deep its secrets go.
 
-export type ElementId = 'arcane' | 'fire' | 'frost' | 'storm' | 'nature' | 'shadow' | 'eclipse';
+export type ElementId = 'arcane' | 'fire' | 'frost' | 'storm' | 'nature' | 'shadow' | 'light' | 'earth' | 'chrono' | 'eclipse';
 
 export interface ElementDef {
   id: ElementId;
@@ -28,6 +28,12 @@ export const ELEMENTS: ElementDef[] = [
     desc: 'Poison, regrowth and entanglement. Wins the long fight.' },
   { id: 'shadow', name: 'Shadow', color: '#b04dff', price: 6000, motto: 'What is taken is kept.',
     desc: 'Life stealing, shield piercing, and spells that simply refuse to be blocked.' },
+  { id: 'light', name: 'Light', color: '#ffe9a8', price: 8000, motto: 'Nothing stays broken.',
+    desc: 'The healer\'s element. Enormous restoration, cleansing, and radiance that burns through the dark.' },
+  { id: 'earth', name: 'Earth', color: '#c98b4a', price: 10500, motto: 'Outlast everything.',
+    desc: 'Immense shields and slow, crushing weight. Nothing kills you while the stone holds.' },
+  { id: 'chrono', name: 'Chrono', color: '#6af2ff', price: 14000, motto: 'Take the extra second.',
+    desc: 'Speed, stasis and second chances. The element that decides when the duel happens.' },
   { id: 'eclipse', name: 'Eclipse', color: '#ff4fd8', price: -1, secret: true, motto: 'When all six align.',
     desc: 'No one sells this. It is said to answer a wizard who has attuned to every other element, and who knows what to draw.' },
 ];

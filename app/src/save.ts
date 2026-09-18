@@ -22,6 +22,8 @@ export interface SaveData {
   best: number;
   /** Spell ids the player has actually drawn at least once. */
   discovered: string[];
+  /** Discoveries the player has not looked at in the spellbook yet: drives the NEW badge. */
+  unseen: string[];
   loadout: string[];
   /** Elements attuned. Arcane is always present; Eclipse is never listed, it is derived. */
   elements: ElementId[];
@@ -57,7 +59,7 @@ function randomName(): string { return `${NAMES[Math.floor(Math.random() * NAMES
 export function defaultSave(): SaveData {
   return {
     v: 3, coins: 0, level: 1, best: 0,
-    discovered: [...STARTING_SPELLS], loadout: [...STARTING_SPELLS],
+    discovered: [...STARTING_SPELLS], unseen: [], loadout: [...STARTING_SPELLS],
     elements: [...STARTING_ELEMENTS],
     upgrades: {}, inventory: [...STARTING_EQUIPMENT],
     equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
@@ -93,6 +95,7 @@ export function parseSave(raw: string | null): SaveData {
     const knownSource = strList(o.discovered).length ? strList(o.discovered) : strList(o.owned);
     const known = new Set([...STARTING_SPELLS, ...knownSource.filter(id => SPELL_BY_ID[id])]);
     d.discovered = [...known];
+    d.unseen = strList(o.unseen).filter(id => known.has(id));
     const loadout = strList(o.loadout).filter(id => known.has(id));
     d.loadout = loadout.length ? loadout : [...STARTING_SPELLS];
 

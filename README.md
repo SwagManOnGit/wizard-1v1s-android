@@ -50,13 +50,26 @@ Follow `docs/LAUNCH-CHECKLIST.md`. In short: create the Play Console and AdMob a
 
 The core loop changed in the second design pass:
 
-- **Spells are hidden until you draw them.** The grimoire shows 51 spells, but an undiscovered one is a silhouette with a tier, a kind and a cryptic hint ("Seven points. You will not find it by accident."). Drawing its glyph in battle reveals it, adds it to the book and casts it on the spot.
-- **Seven elements.** Arcane is free; Fire, Frost, Storm, Nature and Shadow are bought with coins. Eclipse is never sold: it answers only a wizard attuned to all six others, and its three spells are all Mythic.
-- **Glyph tiers run from obvious to absurd.** Common spells are a line or a triangle. Mythic ones are a heptagram, a Lissajous knot or an invented sigil, drawn in a single unbroken stroke. Those are meant to stay rumours for a long time after launch.
+- **Spells are hidden until you draw them.** The codex lists 72 spells, but an undiscovered one is a silhouette with a tier, a kind and a cryptic hint ("Eleven points in a single line. Nobody draws this by accident."). Drawing its glyph in battle reveals it, shows a discovery card over the arena, adds it to your spellbook and casts it on the spot.
+- **Ten elements.** Arcane is free; Fire, Frost, Storm, Nature, Shadow, Light, Earth and Chrono are bought with coins. Eclipse is never sold: it answers only a wizard attuned to all nine others, and its three spells are all Mythic.
+- **Glyph tiers run from obvious to absurd.** Common spells are a line or a triangle. Mythic ones are a hendecagram, a five-against-four Lissajous knot, an eight-petal rose or an invented sigil, all in a single unbroken stroke. Those are meant to stay rumours for a long time after launch. The library is 73 templates, confusion-tested at 100%.
 - **Equipment drops, it is not bought.** Hats, outfits, staffs and shoes fall from levels (bosses always drop) and from four kinds of chest. Every piece belongs to an element and has one of five rarities. Duplicates melt into coins.
 - **Gear is the key to the spell list.** Wearing pieces of an element raises your affinity with it, and affinity is what makes deeper spells findable: one piece for Obscure, two for Forbidden, and a complete four-piece set for that element's Mythic. Threadbare starter gear does not count, so the set has to be earned.
 - **Sets pay off twice**: a stat bonus at two, three and four pieces, and the deepest spells at four.
-- Equipment is visible on the wizard: the hat model, robe and staff-head colour all follow what you wear, with six hat shapes and six staff heads across the elements.
+- Equipment is visible on the wizard: nine hat models and nine staff heads, one per element, plus robe and trim colours that follow what you wear.
+- **Spellbook and codex.** "Known" is your collection, grouped by element, and where you build a loadout. "Codex" is every spell in the game with the unfound ones as silhouettes. A badge on the tab bar counts discoveries you have not looked at yet.
+
+## Menu layout
+
+A five-tab bar runs along the bottom in portrait and down the left edge in landscape:
+
+| Tab | What |
+|---|---|
+| Shop | Attune elements, buy chests, buy character upgrades (coins) |
+| Gear | Your equipment by slot, set progress and the set bonus |
+| **Battle** | The home page: player bar, daily challenge, the 100-level map, and the Battle, Duel and Training buttons |
+| Spells | Spellbook (known) and Codex (everything), with the NEW badge |
+| Market | Rewarded ads and real-money purchases |
 
 ## Game design notes
 

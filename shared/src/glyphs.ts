@@ -17,6 +17,12 @@ export type GlyphId =
   | 'rose3' | 'rose4' | 'rose5'
   | 'star6' | 'star7' | 'star8' | 'star9'
   | 'lissajous' | 'trefoil' | 'pentacle'
+  // light, earth and chrono additions
+  | 'star4' | 'star7b' | 'star9b' | 'star11' | 'star12' | 'sunburst'
+  | 'rose6' | 'rose7' | 'rose8'
+  | 'astroid' | 'nephroid' | 'pentspiral' | 'vcoil'
+  | 'lissajous43' | 'lissajous54'
+  | 'tridown' | 'chalice' | 'spade' | 'key' | 'feather' | 'arrowhead'
   // mythic sigils
   | 'sigil1' | 'sigil2' | 'sigil3';
 
@@ -115,6 +121,33 @@ function pointedStar(points: number, inner: number): Point[] {
     out.push({ x: 50 + r * Math.cos(a), y: 50 + r * Math.sin(a) });
   }
   return out;
+}
+
+/** Spiral with 72-degree turns: a five-sided vortex, clearly not the square or triangular one. */
+function pentSpiral(turns: number): Point[] {
+  const pts: Point[] = [{ x: 50, y: 50 }];
+  let x = 50, y = 50, len = 9, ang = -90;
+  for (let i = 0; i < turns; i++) {
+    x += Math.cos(ang * D) * len; y += Math.sin(ang * D) * len;
+    pts.push({ x, y });
+    ang += 72; len += 5.5;
+  }
+  return fit(pts);
+}
+
+/** Hypocycloid with n cusps (n=3 is the deltoid, n=4 the astroid). */
+function cusped(n: number, samples = 96): Point[] {
+  return fit(param(t => {
+    const a = t * TAU;
+    return { x: (n - 1) * Math.cos(a) + Math.cos((n - 1) * a), y: (n - 1) * Math.sin(a) - Math.sin((n - 1) * a) };
+  }, samples));
+}
+
+function lissajousCurve(a: number, b: number, phase: number): Point[] {
+  return fit(param(t => {
+    const u = t * TAU;
+    return { x: 50 + 46 * Math.sin(a * u), y: 50 + 46 * Math.sin(b * u + phase) };
+  }, 140));
 }
 
 export interface GlyphDef { id: GlyphId; label: string; points: Point[] }
@@ -219,7 +252,7 @@ export const GLYPHS: Record<GlyphId, GlyphDef> = {
   rose3: { id: 'rose3', label: 'Trefoil bloom', points: rose(3, 1) },
   rose4: { id: 'rose4', label: 'Quatrefoil bloom', points: rose(2, 2) },
   rose5: { id: 'rose5', label: 'Cinquefoil bloom', points: rose(5, 1, 150) },
-  star6: { id: 'star6', label: 'Six-point star', points: pointedStar(6, 0.55) },
+  star6: { id: 'star6', label: 'Six-point star', points: pointedStar(6, 0.40) },
   star7: { id: 'star7', label: 'Heptagram', points: starPoly(7, 3) },
   star8: { id: 'star8', label: 'Octagram', points: starPoly(8, 3) },
   star9: { id: 'star9', label: 'Enneagram', points: starPoly(9, 4) },
@@ -235,6 +268,41 @@ export const GLYPHS: Record<GlyphId, GlyphDef> = {
     id: 'pentacle', label: 'Sealed star',
     points: fit([...starPoly(5, 2, 5), ...arc(50, 50, 46, -90, 270, 40)]),
   },
+
+  // ---- light, earth and chrono --------------------------------------------------
+  star4: { id: 'star4', label: 'Four-point star', points: pointedStar(4, 0.34) },
+  sunburst: { id: 'sunburst', label: 'Sunburst', points: pointedStar(8, 0.46) },
+  star7b: { id: 'star7b', label: 'Wide heptagram', points: starPoly(7, 2) },
+  star9b: { id: 'star9b', label: 'Wide enneagram', points: starPoly(9, 2) },
+  star11: { id: 'star11', label: 'Hendecagram', points: starPoly(11, 3) },
+  star12: { id: 'star12', label: 'Dodecagram', points: starPoly(12, 5) },
+  rose6: { id: 'rose6', label: 'Six-petal bloom', points: rose(3, 2) },
+  rose7: { id: 'rose7', label: 'Seven-petal bloom', points: rose(7, 1, 160) },
+  rose8: { id: 'rose8', label: 'Eight-petal bloom', points: rose(4, 2, 160) },
+  astroid: { id: 'astroid', label: 'Four-cusp arch', points: cusped(4) },
+  nephroid: { id: 'nephroid', label: 'Twin-cusp arch', points: fit(param(t => { const a = t * TAU; return { x: 3 * Math.cos(a) - Math.cos(3 * a), y: 3 * Math.sin(a) - Math.sin(3 * a) }; }, 80)) },
+  pentspiral: { id: 'pentspiral', label: 'Five-sided vortex', points: pentSpiral(11) },
+  vcoil: { id: 'vcoil', label: 'Upright coil', points: fit(param(t => { const a = t * TAU * 4; return { x: 50 + 16 * Math.sin(a), y: 8 + 84 * t + 9 * Math.cos(a) }; }, 96)) },
+  lissajous43: { id: 'lissajous43', label: 'Four-three knot', points: lissajousCurve(4, 3, Math.PI / 3) },
+  lissajous54: { id: 'lissajous54', label: 'Five-four knot', points: lissajousCurve(5, 4, Math.PI / 6) },
+  tridown: { id: 'tridown', label: 'Inverted triangle', points: poly([8, 10], [92, 10], [50, 94], [8, 10]) },
+  chalice: {
+    id: 'chalice', label: 'Chalice',
+    points: fit([...poly([16, 8]), ...arc(50, 12, 34, 180, 360, 22), ...poly([84, 8], [84, 12]), ...poly([54, 58], [54, 84], [80, 90]), ...poly([20, 90], [46, 84], [46, 58])]),
+  },
+  spade: {
+    id: 'spade', label: 'Spade',
+    points: fit([...poly([50, 4]), ...arc(72, 42, 28, -122, 100, 22), ...arc(28, 42, 28, 80, -58, 22), ...poly([50, 4])]),
+  },
+  key: {
+    id: 'key', label: 'Key',
+    points: fit([...arc(50, 22, 18, -90, 270, 22), ...poly([50, 40], [50, 94], [76, 94], [50, 78], [70, 78])]),
+  },
+  feather: {
+    id: 'feather', label: 'Feather',
+    points: fit([...poly([82, 6], [22, 92]), ...param(t => ({ x: 22 + 60 * t, y: 92 - 86 * t * t }), 26)]),
+  },
+  arrowhead: { id: 'arrowhead', label: 'Arrowhead', points: poly([12, 88], [50, 6], [88, 88], [50, 62], [12, 88]) },
 
   // ---- mythic sigils ------------------------------------------------------------
   // Invented paths: long, asymmetric, and unlike anything a player draws by accident.
