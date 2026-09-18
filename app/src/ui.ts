@@ -3,13 +3,13 @@ import logoUrl from './assets/swag-logo.png';
 import { setMusic, sfx, unlockAudio } from './audio';
 import { Battle, type BattleEvent } from '@wizard/shared';
 import {
-  AD_REWARD, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
+  AD_REWARD, BUYABLE_ELEMENTS, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
   RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
   LISTED_SPELLS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
   activeSetBonus, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   isAttuned, isBossLevel, isChapterBoss,
-  openChest, requirementText, rollItem, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
-  type ChestDef, type ElementId, type EnemyDef, type EquipDef, type SpellDef, type StageId, type WizardLook,
+  chestOdds, openChest, requirementText, rollItem, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
+  type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, type Point } from '@wizard/shared';
 import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
@@ -118,6 +118,24 @@ function leniency(best: number): number {
 }
 
 const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
+
+/**
+ * The per-item odds line. Google Play will not pass a build that sells randomised items without
+ * showing the chances first, and it is the honest thing to put next to a price anyway.
+ */
+function oddsLine(chest: ChestDef): HTMLElement {
+  const row = el('div', 'odds');
+  chestOdds(chest).forEach((p, i) => {
+    if (p <= 0) return;
+    const r = (i + 1) as Rarity;
+    const span = el('span', '', `${RARITY_NAMES[r]} ${p.toFixed(1)}%`);
+    span.style.color = RARITY_COLORS[r];
+    row.append(span);
+  });
+  const note = el('small', '', `per item · ${chest.items} ${chest.items === 1 ? 'item' : 'items'} per chest`);
+  row.append(note);
+  return row;
+}
 
 /** A blank progression block for the reset button (identity and settings are kept by the caller). */
 function parseSaveFresh(): Partial<SaveData> {
@@ -392,6 +410,12 @@ export class UI {
       `Rating ${this.save.rating} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
     bar.append(badge, idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
 
+    // One line, always, saying what to do next.
+    const goal = this.nextGoal();
+    const goalStrip = el('button', 'goal-strip');
+    goalStrip.innerHTML = `<i>NEXT</i><span>${goal.text}</span><em>›</em>`;
+    goalStrip.addEventListener('click', () => { unlockAudio(); sfx.click(); goal.go(); });
+
     const body = el('div', 'hub-body');
 
     // Three quests a day. Progress is a delta against counters the game already keeps, so a quest
@@ -483,14 +507,16 @@ export class UI {
     extraRow.append(btn('Ranks', 'ghost small', () => this.showRanks()), btn('Awards', 'ghost small', () => this.showAchievements()));
     foot.append(info, playBtn, duelRow, extraRow);
 
-    s.append(bar, body, foot);
+    s.append(bar, goalStrip, body, foot);
     this.show('menu');
     // Only scroll when the level is actually off screen. Centring it unconditionally pushed the
     // daily quests off the top of the hub, so a new player never saw them.
     const tile = tiles.get(this.pickedLevel);
     if (tile) requestAnimationFrame(() => {
       const box = body.getBoundingClientRect(), r = tile.getBoundingClientRect();
-      if (r.top < box.top || r.bottom > box.bottom) tile.scrollIntoView({ block: 'center', inline: 'nearest' });
+      // 'nearest' rather than 'center': centring a tile that is only just below the fold scrolls
+      // far enough to push the quests off the top of the hub. This moves the minimum needed.
+      if (r.top < box.top || r.bottom > box.bottom) tile.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
@@ -509,6 +535,47 @@ export class UI {
     if (!this.save.settings.notifications) return;
     if (!force && this.save.best < 2) return;
     void platform.scheduleReminder(1, 'Wizard 1v1s', 'Your daily reward is ready. The tower awaits!', nextRewardTime());
+  }
+
+  /**
+   * The one thing worth doing next, in a single line.
+   *
+   * A hub with a map, a challenge, three quests and five tabs can still leave a player with no
+   * idea what to do, which is the usual reason a session ends early. The rules are ordered by how
+   * much the player gains, and every one of them is a tap to the screen that resolves it.
+   */
+  private nextGoal(): { text: string; go: () => void } {
+    const save = this.save;
+    if (save.unseen.length) {
+      const n = save.unseen.length;
+      return { text: `${n} new spell${n === 1 ? '' : 's'} in your spellbook`, go: () => this.showSpellbook('known') };
+    }
+    if (canClaimQuests(save)) {
+      return { text: `All three quests done: claim your ${questChest(save).name}`, go: () => this.showMenu() };
+    }
+    const element = BUYABLE_ELEMENTS.filter(e => !save.elements.includes(e.id)).sort((a, b) => a.price - b.price)[0];
+    if (element && save.coins >= element.price) {
+      return { text: `You can attune ${element.name} for ${fmt(element.price)} coins`, go: () => this.showShop('elements') };
+    }
+    const upgrade = UPGRADES
+      .map(u => ({ u, rank: save.upgrades[u.id] ?? 0 }))
+      .filter(x => x.rank < x.u.max && save.coins >= upgradePrice(x.u, x.rank))
+      .sort((a, b) => upgradePrice(a.u, a.rank) - upgradePrice(b.u, b.rank))[0];
+    if (upgrade) {
+      return { text: `${upgrade.u.name} ${upgrade.rank + 1} costs ${fmt(upgradePrice(upgrade.u, upgrade.rank))} coins`, go: () => this.showShop('upgrades') };
+    }
+    // Only while it is a specific nudge. Once a wizard is attuned to half the elements this count
+    // runs to thirty-odd and never changes, and a line that always says the same thing is wallpaper.
+    const findable = discoverable(attunement(save), save.discovered).filter(x => !x.secret).length;
+    if (findable && findable <= 3) {
+      return { text: `${findable} spell${findable === 1 ? '' : 's'} findable with what you are wearing`, go: () => this.showSpellbook('codex') };
+    }
+    const next = Math.min(MAX_LEVEL, save.best + 1);
+    const toChapter = CHAPTER_SIZE - ((next - 1) % CHAPTER_SIZE);
+    if (chapterOf(next) + 1 < CHAPTERS) {
+      return { text: `${toChapter} level${toChapter === 1 ? '' : 's'} to the ${chapterName(chapterOf(next) + 1)}`, go: () => this.startBattle(next, false) };
+    }
+    return { text: `Level ${next} of ${MAX_LEVEL}. The top is close.`, go: () => this.startBattle(next, false) };
   }
 
   /** Pays the three-quest reward as an actual chest opening, which is the better moment. */
@@ -1592,7 +1659,7 @@ export class UI {
     for (const c of CHESTS) {
       const row = el('div', 'row-card');
       const info = el('div', 'info');
-      info.append(el('div', 'name', c.name), el('div', 'desc', c.desc));
+      info.append(el('div', 'name', c.name), el('div', 'desc', c.desc), oddsLine(c));
       row.append(info);
       const b = btn(fmt(c.price), 'gold small', () => {
         if (this.save.coins < c.price) return;
@@ -1649,6 +1716,10 @@ export class UI {
     for (const it of items) {
       const card = el('div', `card ${it.owned ? 'equipped' : ''}`);
       card.append(el('div', 'name', it.name), el('div', 'desc', it.desc));
+      if (it.sku === CONFIG.skus.hatPack) {
+        const gold = CHESTS.find(c => c.id === 'gold');
+        if (gold) card.append(oddsLine(gold));
+      }
       if (it.owned) card.append(btn('Owned', 'ghost'));
       else {
         const b = btn(platform.price(it.sku) ?? it.fallback, 'gold', async () => {

@@ -100,6 +100,25 @@ export const CHESTS: ChestDef[] = [
 ];
 export const CHEST_BY_ID: Record<string, ChestDef> = Object.fromEntries(CHESTS.map(c => [c.id, c]));
 
+/**
+ * The chance of each rarity from a single slot of this chest, as percentages.
+ *
+ * Google Play requires the odds of a randomised item to be disclosed before purchase, and chests
+ * are sold both for coins and, as the Founder's hoard, for real money. This derives them from the
+ * same weights openChest actually rolls with, so the number on the shop card cannot drift away
+ * from the number the game uses.
+ */
+export function chestOdds(chest: ChestDef): number[] {
+  const weights = rarityWeights(chest.level, false).map((w, i) => {
+    const r = (i + 1) as Rarity;
+    if (chest.minRarity && r < chest.minRarity) return 0;
+    if (chest.maxRarity && r > chest.maxRarity) return 0;
+    return w;
+  });
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
+  return weights.map(w => (w / total) * 100);
+}
+
 export function openChest(chest: ChestDef, owned: ElementId[], element?: ElementId): EquipDef[] {
   const out: EquipDef[] = [];
   for (let i = 0; i < chest.items; i++) {

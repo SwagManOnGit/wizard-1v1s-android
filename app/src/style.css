@@ -367,6 +367,16 @@ canvas { image-rendering: pixelated; }
   #ranks.active, #achievements.active, #settings.active { bottom: 0; left: 96px; }
 }
 
+.odds { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-top: 3px; font-size: 15px; }
+.odds small { color: var(--muted); font-size: 14px; }
+
+.goal-strip { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 12px; text-align: left;
+  background: var(--blue-dark); border: none; border-bottom: 3px solid var(--ink); color: var(--text); font-size: 19px; }
+.goal-strip i { flex: none; font-style: normal; font-size: 14px; letter-spacing: 2px; color: var(--gold); }
+.goal-strip span { flex: 1; min-width: 0; }
+.goal-strip em { flex: none; font-style: normal; font-size: 24px; color: var(--gold); }
+.goal-strip:active { background: var(--blue); }
+
 /* ---------- daily quests ---------- */
 .card.quests { gap: 2px; }
 .quest-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
