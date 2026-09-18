@@ -59,7 +59,7 @@ export class BotSession implements DuelSession {
     const mine = computeStats(buildOf(save));
     const theirs = computeStats(buildOf(save));
     this.loadout = [...save.loadout];
-    const botLoadout = ['spark', 'fireball', 'iceshard', 'ward', 'mend', level === 'hard' ? 'lightning' : 'windslash'];
+    const botLoadout = ['spark', 'arcaneorb', 'iceshard', 'ward', 'mend', level === 'hard' ? 'lightning' : 'gust'];
     const sim = new PvpBattle({ seed: this.seed, loadouts: [this.loadout, botLoadout], stats: [mine, theirs] });
     this.opponentName = level === 'hard' ? 'Grand Bot' : level === 'easy' ? 'Novice Bot' : 'Bot Wizard';
     this.view = new PvpView(sim, 0, this.opponentName);

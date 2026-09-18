@@ -76,7 +76,7 @@ export class DuelRoom extends Room {
     if (!this.sim) {
       this.waitT += dt;
       if (this.waitT >= BOT_WAIT_SECONDS && this.seats.length === 1) {
-        this.seats.push({ client: null, deviceId: 'bot', name: 'Bot Wizard', loadout: ['spark', 'fireball', 'iceshard', 'ward', 'mend', 'lightning'], build: RANKED_BUILD, rating: 1000, ready: true });
+        this.seats.push({ client: null, deviceId: 'bot', name: 'Bot Wizard', loadout: ['spark', 'arcaneorb', 'iceshard', 'ward', 'mend', 'lightning'], build: RANKED_BUILD, rating: 1000, ready: true });
         this.start();
       }
       return;

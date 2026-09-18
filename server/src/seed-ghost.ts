@@ -1,7 +1,7 @@
 // Posts a bot-played ghost tape under a fake device id so ghost duels can be tested locally.
 import { GhostRecorder, PvpBattle, PvpBot, RANKED_BUILD, computeStats } from '@wizard/shared';
 const stats = computeStats(RANKED_BUILD);
-const loadout = ['spark', 'fireball', 'iceshard', 'ward', 'mend', 'lightning'];
+const loadout = ['spark', 'arcaneorb', 'iceshard', 'ward', 'mend', 'lightning'];
 const sim = new PvpBattle({ seed: 99, loadouts: [loadout, loadout], stats: [stats, stats] });
 const rec = new GhostRecorder();
 const me = new PvpBot(sim, 0, 'normal', 3), foe = new PvpBot(sim, 1, 'easy', 4);

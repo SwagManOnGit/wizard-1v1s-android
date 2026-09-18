@@ -2,7 +2,7 @@
 import { GhostPlayer, GhostRecorder, PvpBattle, PvpBot, RANKED_BUILD, computeStats, type GhostTape } from '@wizard/shared';
 
 const stats = computeStats(RANKED_BUILD);
-const loadout = ['spark', 'fireball', 'iceshard', 'ward', 'mend', 'lightning'];
+const loadout = ['spark', 'arcaneorb', 'iceshard', 'ward', 'mend', 'lightning'];
 
 // 1. Bot vs bot must end within the time limit without throwing.
 {
