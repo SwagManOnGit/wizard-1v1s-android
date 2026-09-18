@@ -333,7 +333,9 @@ canvas { image-rendering: pixelated; }
 .who-box { flex: 1; min-width: 0; }
 .who-name { font-size: 24px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
 .who-sub { font-size: 16px; color: var(--muted); }
-.hub-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; }
+/* min-width:0 matters: without it the chapter strip’s nowrap children set an intrinsic minimum
+   width that stretches this box past the viewport and drags the whole map off screen. */
+.hub-body { flex: 1; min-height: 0; min-width: 0; max-width: 100%; overflow-y: auto; padding: 10px; }
 .hub-foot { flex: none; padding: 8px 12px 12px; background: var(--win); border-top: 3px solid var(--ink); box-shadow: inset 0 3px 0 var(--win3); display: flex; flex-direction: column; gap: 8px; }
 .hub-foot .btn.big { width: 100%; }
 
@@ -361,7 +363,8 @@ canvas { image-rendering: pixelated; }
 .wiz-level { flex: none; min-width: 54px; padding: 3px 6px 5px; text-align: center; font-size: 28px; line-height: 1; color: var(--gold2);
   background: var(--blue-dark); border: 3px solid var(--edge); box-shadow: inset -3px -3px 0 #101a5a, inset 3px 3px 0 var(--blue); text-shadow: 2px 2px 0 var(--ink); }
 .wiz-level small { display: block; font-size: 13px; letter-spacing: 2px; color: var(--blue-light); text-shadow: none; }
-.chapter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none; }
+.chapter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none;
+  min-width: 0; max-width: 100%; }
 .chapter-row::-webkit-scrollbar { display: none; }
 .chapter { flex: none; padding: 5px 10px; background: var(--win2); color: var(--text); border: 3px solid var(--ink); font-size: 20px; line-height: 1.15;
   box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 var(--win3); text-align: center; white-space: nowrap; }
