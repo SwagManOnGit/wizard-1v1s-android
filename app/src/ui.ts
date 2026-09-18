@@ -35,6 +35,18 @@ const FTUE_BATTLE_DONE = 2, FTUE_ALL_DONE = 3;
 const FTUE_GIFTS: Record<number, string> = { 1: 'arcaneorb', 2: 'ward', 3: 'mend' };
 /** A discovery must beat the best equipped match by this much, so known spells always win ties. */
 const DISCOVERY_MARGIN = 0.03;
+/**
+ * Training wheels. A spell's glyph is drawn on the pad while it is still unfamiliar and fades out
+ * as it is used, so a new spell at level 300 gets the same help Spark did on level 1. Nothing is
+ * taken away permanently: the peek button brings the guide back at full strength whenever it is
+ * wanted, at the cost of the seconds spent holding it.
+ */
+const WHEELS_FULL = 3, WHEELS_GONE = 8;
+function wheelsAlpha(casts: number): number {
+  if (casts < WHEELS_FULL) return 1;
+  if (casts >= WHEELS_GONE) return 0;
+  return 1 - (casts - WHEELS_FULL) / (WHEELS_GONE - WHEELS_FULL);
+}
 
 /** A stable outfit for an opponent we only know by name. */
 function lookFromName(name: string): WizardLook {
@@ -205,6 +217,8 @@ export class UI {
   private padFlash = 0;
   private padHint: SpellDef | null = null;
   private padHintT = 0;
+  /** True while the peek button is held: the guide is shown and the duel carries on around it. */
+  private peeking = false;
   private castMsgT = 0;
   private lastDps = { t: 0, dmg: 0, dps: 0 };
   private arrangeControls: (() => void) | null = null;
@@ -338,6 +352,7 @@ export class UI {
   }
 
   private clearFtue(): void {
+    this.peeking = false;
     this.ftueStep = -1;
     this.scripted = null;
     this.ftueTimeScale = 1;
@@ -773,7 +788,18 @@ export class UI {
     const padWrap = el('div', 'pad-wrap');
     const pad = el('canvas', 'pad');
     const castMsg = el('div', 'cast-msg');
-    padWrap.append(pad, castMsg);
+    // Hold to see the glyph. The duel does not pause, so remembering is still worth something.
+    const peek = el('button', 'peek', 'PEEK');
+    peek.title = 'Hold to see the glyph';
+    const setPeek = (on: boolean) => (e: Event): void => {
+      e.preventDefault();
+      this.peeking = on;
+      peek.classList.toggle('held', on);
+      this.drawPad();
+    };
+    peek.addEventListener('pointerdown', setPeek(true));
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) peek.addEventListener(ev, setPeek(false));
+    padWrap.append(pad, castMsg, peek);
     const pair = el('div', 'dodge-pair');
     // Portrait: left | pad | right. Landscape: pad above a pair of buttons. Re-arranged on resize.
     this.arrangeControls = (): void => {
@@ -818,6 +844,7 @@ export class UI {
           if (ev.who === 'player' && ev.spell) {
             sfx.cast(0.8 + (ev.spell.cost / 65) * 0.6);
             this.save.stats.casts++; if (ev.spell.id === 'meteor') this.save.stats.metersCast++;
+            this.save.practice[ev.spell.id] = (this.save.practice[ev.spell.id] ?? 0) + 1;
             const chip = this.hud.chips.get(ev.spell.id); if (chip) { chip.classList.add('flash'); setTimeout(() => chip.classList.remove('flash'), 220); }
           } else sfx.cast(0.6);
           break;
@@ -1112,6 +1139,22 @@ export class UI {
     else pad.classList.add('bad');
   }
 
+  /** The least practised spell in the loadout, or nothing once they are all familiar. */
+  private guideSpell(): SpellDef | null {
+    const b = this.battle;
+    if (!b) return null;
+    let best: SpellDef | null = null;
+    let fewest = WHEELS_GONE;
+    for (const s of b.loadout) {
+      // Never offer a glyph they cannot pay for: tracing it would fizzle, which teaches the
+      // opposite of what the guide is for.
+      if (b.player.mana < b.spellCost(s)) continue;
+      const n = this.save.practice[s.id] ?? 0;
+      if (n < fewest) { best = s; fewest = n; }
+    }
+    return best;
+  }
+
   private drawPad(): void {
     const pad = this.hud?.pad; if (!pad) return;
     const g = pad.getContext('2d'); if (!g) return;
@@ -1124,11 +1167,18 @@ export class UI {
     g.beginPath(); g.arc(w / 2, h / 2, Math.min(w, h) * 0.42, 0, Math.PI * 2); g.stroke();
     g.beginPath(); g.arc(w / 2, h / 2, Math.min(w, h) * 0.3, 0, Math.PI * 2); g.stroke();
     g.restore();
-    if (this.padHint) {
+    // What to trace: the chip the player tapped, otherwise the spell they have practised least.
+    const asked = !!this.padHint && (this.padHintT > 0 || this.peeking);
+    const guide = asked ? this.padHint : this.guideSpell();
+    const alpha = !guide ? 0
+      : this.peeking ? 0.85
+      : asked ? 0.35 + Math.min(1, this.padHintT) * 0.3
+      : wheelsAlpha(this.save.practice[guide.id] ?? 0) * 0.32;
+    if (guide && alpha > 0.02) {
       // Ghost glyph drawn at the size the spell actually requires (templates fill ~86% of their box).
-      const size = (Math.min(w, h) * requiredCoverage(this.padHint)) / 0.86;
-      g.save(); g.globalAlpha = 0.35 + Math.min(1, this.padHintT) * 0.3;
-      drawGlyph(g, this.padHint.glyph, (w - size) / 2, (h - size) / 2, size, this.padHint.color, 4 * dpr, this.padHint.reverse);
+      const size = (Math.min(w, h) * requiredCoverage(guide)) / 0.86;
+      g.save(); g.globalAlpha = alpha;
+      drawGlyph(g, guide.glyph, (w - size) / 2, (h - size) / 2, size, guide.color, 4 * dpr, guide.reverse);
       g.restore();
     } else if (!this.padDrawing && this.padPoints.length === 0) {
       g.save(); g.fillStyle = 'rgba(200,190,255,0.35)'; g.font = `${18 * dpr}px "Jersey 10", sans-serif`; g.textAlign = 'center';

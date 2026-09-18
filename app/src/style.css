@@ -367,6 +367,10 @@ canvas { image-rendering: pixelated; }
   #ranks.active, #achievements.active, #settings.active { bottom: 0; left: 96px; }
 }
 
+.peek { position: absolute; top: 4px; right: 4px; padding: 3px 7px 4px; font-size: 15px; letter-spacing: 1px; line-height: 1;
+  color: var(--muted); background: rgba(10, 6, 32, 0.75); border: 2px solid var(--win3); touch-action: none; z-index: 2; }
+.peek.held { color: var(--ink); background: var(--gold); border-color: var(--gold2); }
+
 /* ---------- scripted first duel ---------- */
 .ftue-prompt { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); width: min(90%, 420px); padding: 10px 14px;
   text-align: center; background: rgba(10, 6, 32, 0.86); border: 3px solid var(--gold); box-shadow: 0 4px 0 var(--ink); z-index: 13; }

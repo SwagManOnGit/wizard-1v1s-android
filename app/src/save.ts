@@ -24,6 +24,8 @@ export interface SaveData {
   ftue: number;
   /** Spell ids the player has actually drawn at least once. */
   discovered: string[];
+  /** Successful casts per spell, which is what fades that spell's guide off the draw pad. */
+  practice: Record<string, number>;
   /** Discoveries the player has not looked at in the spellbook yet: drives the NEW badge. */
   unseen: string[];
   loadout: string[];
@@ -63,7 +65,7 @@ export function defaultSave(): SaveData {
     v: 3, coins: 0, level: 1, best: 0, ftue: 0,
     // A new wizard knows the four starters but carries only Spark: the rest are handed over one
     // per level, so the first four fights each teach exactly one new thing.
-    discovered: [...STARTING_SPELLS], unseen: [], loadout: [STARTING_SPELLS[0]],
+    discovered: [...STARTING_SPELLS], unseen: [], loadout: [STARTING_SPELLS[0]], practice: {},
     elements: [...STARTING_ELEMENTS],
     upgrades: {}, inventory: [...STARTING_EQUIPMENT],
     equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
@@ -101,6 +103,8 @@ export function parseSave(raw: string | null): SaveData {
     const known = new Set([...STARTING_SPELLS, ...knownSource.filter(id => SPELL_BY_ID[id])]);
     d.discovered = [...known];
     d.unseen = strList(o.unseen).filter(id => known.has(id));
+    const pr = obj(o.practice);
+    for (const id of Object.keys(pr)) if (SPELL_BY_ID[id]) d.practice[id] = int(pr[id], 0);
     const loadout = strList(o.loadout).filter(id => known.has(id));
     d.loadout = loadout.length ? loadout : [...STARTING_SPELLS];
 
