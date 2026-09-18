@@ -17,11 +17,22 @@ Individual harnesses live in `server/`: `npm run test:duel -w server` (bot duel 
 determinism), `test:glyphs` (glyph confusion), `test:campaign` (level curve), `test:progression`
 (a report, not an assertion — read its numbers, it always exits 0).
 
-## This machine has no Android toolchain
+## Building the Android app locally
 
-No JDK, no Android SDK, no adb. `npm run android:*` and anything under `app/android` cannot be
-built or run locally — GitHub Actions produces the APK and AAB. Verify gameplay through the web
-build in the browser pane instead, and say plainly that the Android shell itself is unverified.
+The toolchain is installed but not on PATH, so export these first. JAVA_HOME must point at 21:
+Android Studio bundles JDK 25 and Gradle 8.11 refuses it, and CI builds with Temurin 21 anyway.
+
+```bash
+export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot"
+export ANDROID_HOME="/c/Users/louis/AppData/Local/Android/Sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+npm run android:sync                                       # web build, then copy into app/android
+cd app/android && ./gradlew.bat assembleDebug --no-daemon   # ~2m30s cold
+```
+
+The APK lands in `app/android/app/build/outputs/apk/debug/`. There is no emulator image, and
+usually no phone attached: check `adb devices` before assuming the app can actually be run. A
+build proving it compiles is not the same as proving it works on a device — say which one you did.
 
 ## Invariants worth knowing before you change things
 
