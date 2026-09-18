@@ -11,7 +11,8 @@ export type EventName =
   | 'ftue_step' | 'ftue_done'
   | 'battle_start' | 'battle_end' | 'level_cleared'
   | 'spell_discovered' | 'duel_end'
-  | 'shop_view' | 'purchase_attempt' | 'purchase_complete' | 'ad_watched';
+  | 'shop_view' | 'purchase_attempt' | 'purchase_complete' | 'ad_watched'
+  | 'quest_claimed';
 
 interface QueuedEvent { t: number; name: EventName; props: Record<string, unknown> }
 

@@ -23,6 +23,7 @@ import { api } from './net/api';
 import { analytics } from './net/analytics';
 import { ACHIEVEMENTS, evaluateAchievements } from './features/achievements';
 import { challengeAvailable, claimDaily, dailyChallenge, markChallengeDone, nextRewardTime, type Challenge } from './features/daily';
+import { canClaimQuests, ensureQuests, questChest, questsToday } from './features/quests';
 import { BotSession, GhostSession, OnlineSession, fetchGhost, type DuelMode, type DuelSession } from './duel/session';
 import type { BattleLike } from './duel/view';
 
@@ -101,6 +102,19 @@ function strokeExtent(pts: Point[]): number {
 /** Fraction of the pad a glyph must span: cheap spells stay quick, big spells demand a big, deliberate stroke. */
 function requiredCoverage(spell: SpellDef): number {
   return Math.min(0.68, 0.28 + 0.42 * (spell.cost / 65));
+}
+
+/**
+ * Slack for a new wizard, full at level 1 and gone by level 10.
+ *
+ * The size and clarity gates exist to stop a veteran spamming a Mythic with a two-centimetre
+ * scribble. Applying them at full strength to somebody ninety seconds into the game punishes the
+ * exact stroke they are still learning to make, and roughly three in five players leave a game
+ * whose difficulty arrives too fast. It is also safe: early on only a handful of spells are armed,
+ * so a looser threshold has almost nothing to be confused with.
+ */
+function leniency(best: number): number {
+  return Math.max(0, 1 - best / 10);
 }
 
 const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
@@ -380,6 +394,30 @@ export class UI {
 
     const body = el('div', 'hub-body');
 
+    // Three quests a day. Progress is a delta against counters the game already keeps, so a quest
+    // can never disagree with the statistics screen.
+    ensureQuests(this.save);
+    const chest = questChest(this.save);
+    const quests = questsToday(this.save);
+    const qCard = el('div', 'card quests');
+    const qHead = el('div', 'quest-head');
+    qHead.append(el('b', '', 'DAILY QUESTS'),
+      el('small', '', this.save.quests.claimed ? 'Reward claimed' : `All three: a ${chest.name}`));
+    qCard.append(qHead);
+    for (const q of quests) {
+      const row = el('div', `quest ${q.done ? 'done' : ''}`);
+      const txt = el('div', 'quest-txt');
+      txt.append(el('div', 'name', q.def.name), el('div', 'desc', q.def.desc));
+      const bar = el('div', 'quest-bar');
+      const fill = el('div', 'fill');
+      fill.style.width = `${Math.round((q.progress / q.def.goal) * 100)}%`;
+      bar.append(fill);
+      row.append(txt, bar, el('div', 'quest-count', q.done ? 'DONE' : `${q.progress}/${q.def.goal}`));
+      qCard.append(row);
+    }
+    if (canClaimQuests(this.save)) qCard.append(btn(`CLAIM ${chest.name.toUpperCase()}`, 'gold', () => this.claimQuests()));
+    body.append(qCard);
+
     // Daily challenge sits at the top: one modified fight a day for triple coins.
     const ch = dailyChallenge(this.save);
     const chCard = el('div', 'card challenge');
@@ -447,7 +485,13 @@ export class UI {
 
     s.append(bar, body, foot);
     this.show('menu');
-    tiles.get(this.pickedLevel)?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    // Only scroll when the level is actually off screen. Centring it unconditionally pushed the
+    // daily quests off the top of the hub, so a new player never saw them.
+    const tile = tiles.get(this.pickedLevel);
+    if (tile) requestAnimationFrame(() => {
+      const box = body.getBoundingClientRect(), r = tile.getBoundingClientRect();
+      if (r.top < box.top || r.bottom > box.bottom) tile.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
 
@@ -465,6 +509,20 @@ export class UI {
     if (!this.save.settings.notifications) return;
     if (!force && this.save.best < 2) return;
     void platform.scheduleReminder(1, 'Wizard 1v1s', 'Your daily reward is ready. The tower awaits!', nextRewardTime());
+  }
+
+  /** Pays the three-quest reward as an actual chest opening, which is the better moment. */
+  private claimQuests(): void {
+    if (!canClaimQuests(this.save)) return;
+    const chest = questChest(this.save);
+    this.save.quests.claimed = true;
+    this.save.stats.chests++;
+    const results = openChest(chest, this.save.elements).map(it => grantItem(this.save, it));
+    analytics.track('quest_claimed', { chest: chest.id, best: this.save.best });
+    this.commit();
+    this.afterProgress();
+    this.showMenu();
+    this.showLoot(results, `${chest.name} claimed`);
   }
 
   // ---------------------------------------------------------------- daily reward
@@ -1084,7 +1142,7 @@ export class UI {
       const found = SPELL_BY_ID[dm.key];
       const clear = dm.score >= discoveryThreshold(found.tier);
       const beatsKnown = !m || dm.score > m.score + DISCOVERY_MARGIN;
-      const bigEnough = coverageNow >= requiredCoverage(found);
+      const bigEnough = coverageNow >= this.coverageFor(found);
       if (clear && beatsKnown && bigEnough) {
         this.padFlash = 0.45;
         pad.classList.add('ok');
@@ -1103,7 +1161,7 @@ export class UI {
     }
 
     this.padFlash = 0.45;
-    if (!m || m.score < RECOGNIZE_THRESHOLD) {
+    if (!m || m.score < this.recogniseFloor()) {
       pad.classList.add('bad');
       // The commonest near miss is now the right shape drawn the wrong way round, so name it
       // and put the arrows back on the pad instead of leaving the player guessing.
@@ -1118,7 +1176,7 @@ export class UI {
     }
     const spell = SPELL_BY_ID[m.key];
     // Stronger spells need a clearer and larger stroke, so a tiny scribble cannot spam them.
-    if (m.score < RECOGNIZE_THRESHOLD + 0.1 * (spell.cost / 65)) {
+    if (m.score < this.clarityFor(spell)) {
       pad.classList.add('bad');
       this.castMessage(`Draw ${spell.name} more clearly`, true);
       sfx.fizzle();
@@ -1126,7 +1184,7 @@ export class UI {
     }
     const rect = pad.getBoundingClientRect();
     const coverage = strokeExtent(this.padPoints) / Math.max(1, Math.min(rect.width, rect.height));
-    if (coverage < requiredCoverage(spell)) {
+    if (coverage < this.coverageFor(spell)) {
       pad.classList.add('bad');
       this.castMessage(`Draw ${spell.name} bigger!`, true);
       this.padHint = spell; this.padHintT = 1.6;
@@ -1155,6 +1213,21 @@ export class UI {
     return best;
   }
 
+  /** The size this stroke really has to be right now, easing off over the first ten levels. */
+  private coverageFor(spell: SpellDef): number {
+    return requiredCoverage(spell) * (1 - 0.35 * leniency(this.save.best));
+  }
+
+  /** The score below which a stroke is not a spell at all, eased for the first ten levels. */
+  private recogniseFloor(): number {
+    return RECOGNIZE_THRESHOLD - 0.06 * leniency(this.save.best);
+  }
+
+  /** The score this particular spell demands, which is the floor plus a surcharge for power. */
+  private clarityFor(spell: SpellDef): number {
+    return this.recogniseFloor() + 0.1 * (spell.cost / 65) * (1 - leniency(this.save.best));
+  }
+
   private drawPad(): void {
     const pad = this.hud?.pad; if (!pad) return;
     const g = pad.getContext('2d'); if (!g) return;
@@ -1176,7 +1249,7 @@ export class UI {
       : wheelsAlpha(this.save.practice[guide.id] ?? 0) * 0.32;
     if (guide && alpha > 0.02) {
       // Ghost glyph drawn at the size the spell actually requires (templates fill ~86% of their box).
-      const size = (Math.min(w, h) * requiredCoverage(guide)) / 0.86;
+      const size = (Math.min(w, h) * this.coverageFor(guide)) / 0.86;
       g.save(); g.globalAlpha = alpha;
       drawGlyph(g, guide.glyph, (w - size) / 2, (h - size) / 2, size, guide.color, 4 * dpr, guide.reverse);
       g.restore();

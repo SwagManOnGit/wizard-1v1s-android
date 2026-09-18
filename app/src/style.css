@@ -367,6 +367,21 @@ canvas { image-rendering: pixelated; }
   #ranks.active, #achievements.active, #settings.active { bottom: 0; left: 96px; }
 }
 
+/* ---------- daily quests ---------- */
+.card.quests { gap: 2px; }
+.quest-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.quest-head b { font-size: 22px; color: var(--gold); letter-spacing: 1px; }
+.quest-head small { font-size: 15px; color: var(--muted); }
+.quest { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.quest-txt { flex: 1; min-width: 0; }
+.quest-txt .name { font-size: 19px; color: var(--text); line-height: 1.1; }
+.quest-txt .desc { font-size: 14px; color: var(--muted); line-height: 1.1; }
+.quest-bar { flex: none; width: 64px; height: 10px; background: var(--ink); border: 2px solid var(--win3); }
+.quest-bar .fill { height: 100%; background: var(--gold); }
+.quest-count { flex: none; min-width: 54px; text-align: right; font-size: 17px; color: var(--muted); }
+.quest.done .quest-count { color: var(--green); }
+.quest.done .quest-bar .fill { background: var(--green); }
+
 .peek { position: absolute; top: 4px; right: 4px; padding: 3px 7px 4px; font-size: 15px; letter-spacing: 1px; line-height: 1;
   color: var(--muted); background: rgba(10, 6, 32, 0.75); border: 2px solid var(--win3); touch-action: none; z-index: 2; }
 .peek.held { color: var(--ink); background: var(--gold); border-color: var(--gold2); }

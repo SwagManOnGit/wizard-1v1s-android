@@ -10,6 +10,9 @@ export type { PlayerStats };
 
 export interface Settings { music: boolean; sfx: boolean; haptics: boolean; notifications: boolean; analytics: boolean }
 export interface DailyState { lastClaim: string; streak: number; challengeDate: string; challengeDone: boolean }
+/** Today's quests: when they were rolled, the counters they are measured against, and whether the
+ *  reward has been taken. Progress is a delta from that base, so no quest needs its own tracking. */
+export interface QuestState { date: string; base: Record<string, number>; claimed: boolean }
 export interface LifetimeStats {
   dodges: number; casts: number; bossWins: number; duelWins: number; duelLosses: number;
   ghostWins: number; ghostLosses: number; metersCast: number; drops: number; chests: number;
@@ -43,6 +46,7 @@ export interface SaveData {
   name: string;
   settings: Settings;
   daily: DailyState;
+  quests: QuestState;
   achievements: string[];
   passes: { doubleCoins: boolean; noAds: boolean };
   stats: LifetimeStats;
@@ -73,6 +77,7 @@ export function defaultSave(): SaveData {
     deviceId: newDeviceId(), name: randomName(),
     settings: { music: true, sfx: true, haptics: true, notifications: true, analytics: true },
     daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false },
+    quests: { date: '', base: {}, claimed: false },
     achievements: [],
     passes: { doubleCoins: false, noAds: false },
     stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0, drops: 0, chests: 0 },
@@ -137,6 +142,11 @@ export function parseSave(raw: string | null): SaveData {
     d.settings = { music: bool(st.music, true), sfx: bool(st.sfx, true), haptics: bool(st.haptics, true), notifications: bool(st.notifications, true), analytics: bool(st.analytics, true) };
     const dl = obj(o.daily);
     d.daily = { lastClaim: str(dl.lastClaim, ''), streak: int(dl.streak, 0), challengeDate: str(dl.challengeDate, ''), challengeDone: bool(dl.challengeDone, false) };
+    const qz = obj(o.quests);
+    const rawBase = obj(qz.base);
+    const base: Record<string, number> = {};
+    for (const k of Object.keys(rawBase)) base[k] = int(rawBase[k], 0);
+    d.quests = { date: str(qz.date, ''), base, claimed: bool(qz.claimed, false) };
     d.achievements = strList(o.achievements);
     const ps = obj(o.passes);
     d.passes = { doubleCoins: bool(ps.doubleCoins, false), noAds: bool(ps.noAds, false) };
