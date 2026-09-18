@@ -18,7 +18,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      # No setup-android step: the ubuntu-latest image already ships the Android SDK
+      # (ANDROID_HOME set, licences accepted), and the action was failing on it.
+      - name: Show the Android SDK the runner provides
+        run: echo "ANDROID_HOME=$ANDROID_HOME"; ls "$ANDROID_HOME/platforms" || true
       - run: npm ci
       - name: Build web assets
         run: npm run build -w app
