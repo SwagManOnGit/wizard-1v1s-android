@@ -8,7 +8,7 @@ import {
 export { computeStats };
 export type { PlayerStats };
 
-export interface Settings { music: boolean; sfx: boolean; haptics: boolean; notifications: boolean }
+export interface Settings { music: boolean; sfx: boolean; haptics: boolean; notifications: boolean; analytics: boolean }
 export interface DailyState { lastClaim: string; streak: number; challengeDate: string; challengeDone: boolean }
 export interface LifetimeStats {
   dodges: number; casts: number; bossWins: number; duelWins: number; duelLosses: number;
@@ -20,6 +20,8 @@ export interface SaveData {
   coins: number;
   level: number;
   best: number;
+  /** How far through the scripted first duel: 0 not started, 1 in it, 2 done, 3 codex card seen. */
+  ftue: number;
   /** Spell ids the player has actually drawn at least once. */
   discovered: string[];
   /** Discoveries the player has not looked at in the spellbook yet: drives the NEW badge. */
@@ -58,14 +60,16 @@ function randomName(): string { return `${NAMES[Math.floor(Math.random() * NAMES
 
 export function defaultSave(): SaveData {
   return {
-    v: 3, coins: 0, level: 1, best: 0,
-    discovered: [...STARTING_SPELLS], unseen: [], loadout: [...STARTING_SPELLS],
+    v: 3, coins: 0, level: 1, best: 0, ftue: 0,
+    // A new wizard knows the four starters but carries only Spark: the rest are handed over one
+    // per level, so the first four fights each teach exactly one new thing.
+    discovered: [...STARTING_SPELLS], unseen: [], loadout: [STARTING_SPELLS[0]],
     elements: [...STARTING_ELEMENTS],
     upgrades: {}, inventory: [...STARTING_EQUIPMENT],
     equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
     wins: 0, losses: 0, earned: 0, adsWatched: 0,
     deviceId: newDeviceId(), name: randomName(),
-    settings: { music: true, sfx: true, haptics: true, notifications: true },
+    settings: { music: true, sfx: true, haptics: true, notifications: true, analytics: true },
     daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false },
     achievements: [],
     passes: { doubleCoins: false, noAds: false },
@@ -89,6 +93,7 @@ export function parseSave(raw: string | null): SaveData {
     const o = obj(JSON.parse(raw));
     d.coins = int(o.coins, 0);
     d.level = int(o.level, 1, 1);
+    d.ftue = int(o.ftue, 0);
     d.best = int(o.best, 0);
 
     // v1/v2 stored bought spells in `owned`; those the player had are treated as already discovered.
@@ -125,7 +130,7 @@ export function parseSave(raw: string | null): SaveData {
     d.deviceId = str(o.deviceId, d.deviceId) || d.deviceId;
     d.name = str(o.name, d.name).slice(0, 16) || d.name;
     const st = obj(o.settings);
-    d.settings = { music: bool(st.music, true), sfx: bool(st.sfx, true), haptics: bool(st.haptics, true), notifications: bool(st.notifications, true) };
+    d.settings = { music: bool(st.music, true), sfx: bool(st.sfx, true), haptics: bool(st.haptics, true), notifications: bool(st.notifications, true), analytics: bool(st.analytics, true) };
     const dl = obj(o.daily);
     d.daily = { lastClaim: str(dl.lastClaim, ''), streak: int(dl.streak, 0), challengeDate: str(dl.challengeDate, ''), challengeDone: bool(dl.challengeDone, false) };
     d.achievements = strList(o.achievements);

@@ -24,6 +24,8 @@ export class AndroidPlatform implements Platform {
   private prices = new Map<string, string>();
   private storeReady = false;
   private pendingPurchase: { sku: string; resolve: (r: PurchaseResult) => void } | null = null;
+  /** True when Google's consent form is still owed; it is shown on the first ad, not at boot. */
+  private consentRequired = false;
   private owned = new Set<string>();
 
   async init(): Promise<void> {
@@ -51,11 +53,27 @@ export class AndroidPlatform implements Platform {
   private async initAds(): Promise<void> {
     try {
       await AdMob.initialize();
-      // European users must be asked for consent before personalised ads (Google UMP).
-      const info = await AdMob.requestConsentInfo();
-      if (info.isConsentFormAvailable && info.status === AdmobConsentStatus.REQUIRED) await AdMob.showConsentForm();
-      await this.loadAd();
+      // Asking the SDK what it needs costs nothing and shows no UI. The consent form itself is
+      // deliberately not shown here: a 206-partner privacy wall over the tutorial, before the
+      // player has seen a single spell, is the worst possible first impression and it is asking
+      // about ads they have not been offered yet. It appears when they ask for an ad.
+      this.consentRequired = await this.checkConsent();
+      if (!this.consentRequired) await this.loadAd();
     } catch (e) { console.warn('AdMob init failed', e); }
+  }
+
+  private async checkConsent(): Promise<boolean> {
+    const info = await AdMob.requestConsentInfo();
+    return !!info.isConsentFormAvailable && info.status === AdmobConsentStatus.REQUIRED;
+  }
+
+  /** Shows the UMP form, if it is still owed, at the moment the player actually wants an ad. */
+  private async ensureConsent(): Promise<void> {
+    if (!this.consentRequired) return;
+    try {
+      await AdMob.showConsentForm();
+      this.consentRequired = await this.checkConsent();
+    } catch (e) { console.warn('consent form failed', e); }
   }
   private loadAd(): Promise<void> {
     if (!this.adLoading) {
@@ -66,8 +84,11 @@ export class AndroidPlatform implements Platform {
     }
     return this.adLoading;
   }
-  adsAvailable(): boolean { return this.adsReady; }
+  // Still "available" while consent is outstanding, or the button that triggers the consent form
+  // would be greyed out and the player could never reach it.
+  adsAvailable(): boolean { return this.adsReady || this.consentRequired; }
   async showRewardedAd(): Promise<boolean> {
+    await this.ensureConsent();
     if (!this.adsReady) { await this.loadAd(); if (!this.adsReady) return false; }
     return new Promise<boolean>(resolve => {
       let rewarded = false;

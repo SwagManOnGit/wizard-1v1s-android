@@ -19,6 +19,16 @@ app.use(express.json({ limit: '256kb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, protocol: PROTOCOL_VERSION, ...store.counts }));
 
+// Telemetry in, funnel out. Both are cheap enough to serve from the JSON store.
+app.post('/api/events', (req, res) => {
+  const { deviceId, events } = (req.body ?? {}) as { deviceId?: string; events?: { name: string; props?: Record<string, unknown> }[] };
+  if (typeof deviceId !== 'string' || !Array.isArray(events)) return res.status(400).json({ ok: false });
+  const kept = store.recordEvents(deviceId.slice(0, 64), events.slice(0, 200));
+  return res.json({ ok: true, kept });
+});
+
+app.get('/api/funnel', (_req, res) => res.json(store.funnel()));
+
 app.get('/api/leaderboard', (req, res) => {
   const by = req.query.by === 'rating' ? 'rating' : 'best';
   res.json({ by, entries: store.leaderboard(by) });

@@ -5,10 +5,10 @@ import { Battle, type BattleEvent } from '@wizard/shared';
 import {
   AD_REWARD, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
   RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
-  SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
+  LISTED_SPELLS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
   activeSetBonus, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   isAttuned, isBossLevel, isChapterBoss,
-  openChest, requirementText, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
+  openChest, requirementText, rollItem, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, type Point } from '@wizard/shared';
@@ -20,12 +20,19 @@ import { Arena } from './scene';
 import { CONFIG, platform, webPlatform } from './platform';
 import { setMusicEnabled, setSfxEnabled } from './audio';
 import { api } from './net/api';
+import { analytics } from './net/analytics';
 import { ACHIEVEMENTS, evaluateAchievements } from './features/achievements';
 import { challengeAvailable, claimDaily, dailyChallenge, markChallengeDone, nextRewardTime, type Challenge } from './features/daily';
 import { BotSession, GhostSession, OnlineSession, fetchGhost, type DuelMode, type DuelSession } from './duel/session';
 import type { BattleLike } from './duel/view';
 
 const RECOGNIZE_THRESHOLD = 0.6;
+/** Scripted first duel: a softer opponent, three Sparks and it falls. */
+const FTUE_ENEMY_HP = 36;
+/** ftue values: 0 not started, 1 in the scripted duel, 2 duel done, 3 codex card seen. */
+const FTUE_BATTLE_DONE = 2, FTUE_ALL_DONE = 3;
+/** One starter handed over per cleared level, so each of the first fights teaches one thing. */
+const FTUE_GIFTS: Record<number, string> = { 1: 'arcaneorb', 2: 'ward', 3: 'mend' };
 /** A discovery must beat the best equipped match by this much, so known spells always win ties. */
 const DISCOVERY_MARGIN = 0.03;
 
@@ -173,6 +180,13 @@ export class UI {
   /** The same equipped spells armed backwards, purely so a wrong-way stroke can be named. */
   private mirrorRec = new Recognizer<string>();
   private grimoireElement: ElementId = 'arcane';
+  /** Step of the scripted first duel: 0 trace, 1 dodge, 2 finish. -1 when not in it. */
+  private ftueStep = -1;
+  /** The concrete Battle behind the script: the duel view interface cannot hold the enemy still. */
+  private scripted: Battle | null = null;
+  private battleStartedAt = 0;
+  private ftueTimeScale = 1;
+  private pendingGift: SpellDef | null = null;
   /** Which block of fifty levels the map is showing. -1 until the first render picks one. */
   private chapter = -1;
   private loopId = 0;
@@ -281,6 +295,57 @@ export class UI {
 
   private commit(): void { this.onChange(); }
 
+  /**
+   * Boot entry. A brand new wizard never sees the menu first: they are dropped straight into a
+   * scripted duel, because the one verb this game runs on is one nobody has met before.
+   */
+  start(): void {
+    if (this.save.ftue < FTUE_BATTLE_DONE && this.save.best === 0) this.startFtue();
+    else this.showMenu();
+  }
+
+  private startFtue(): void {
+    this.save.ftue = 1;
+    this.commit();
+    this.startBattle(1, false, null, true);
+  }
+
+  // ---------------------------------------------------------------- scripted first duel
+  /** Moves the script on, and with it the prompt, the clock and what the player is allowed to do. */
+  private ftueEnter(step: number): void {
+    this.ftueStep = step;
+    analytics.track('ftue_step', { step });
+    for (const d of this.hud.dodgeBtns) { d.disabled = step === 0; d.classList.remove('pulse'); }
+    if (step === 0) {
+      this.padHint = SPELL_BY_ID.spark; this.padHintT = 9999;
+      this.ftueSay('TRACE THE GLYPH', 'Follow the arrows, top to bottom.');
+    } else if (step === 1) {
+      this.padHintT = 0; this.ftueTimeScale = 0.35;
+      this.ftueSay('NOW MOVE', 'Tap the side that lights up.');
+      if (this.scripted) this.scripted.enemy.castTimer = 0.25;
+    } else if (step === 2) {
+      this.ftueTimeScale = 1;
+      this.ftueSay('FINISH IT', 'Keep drawing. Dodge when a lane lights up.');
+      setTimeout(() => this.arenaOverlay.querySelector('.ftue-prompt')?.classList.add('out'), 2600);
+    }
+  }
+
+  private ftueSay(title: string, sub: string): void {
+    this.arenaOverlay.querySelector('.ftue-prompt')?.remove();
+    const p = el('div', 'ftue-prompt');
+    p.innerHTML = `<b>${title}</b><small>${sub}</small>`;
+    this.arenaOverlay.append(p);
+  }
+
+  private clearFtue(): void {
+    this.ftueStep = -1;
+    this.scripted = null;
+    this.ftueTimeScale = 1;
+    this.padHintT = 0;
+    this.arenaOverlay.querySelector('.ftue-prompt')?.remove();
+    for (const d of this.hud.dodgeBtns ?? []) { d.disabled = false; d.classList.remove('pulse'); }
+  }
+
   // ---------------------------------------------------------------- menu
   /** The home page: player bar, daily challenge, the level map and the battle buttons. */
   showMenu(): void {
@@ -375,12 +440,15 @@ export class UI {
    * Books tomorrow's reminder, which is also what asks Android for notification permission.
    *
    * Never on a cold first launch: a permission prompt over the menu of a game nobody has played
-   * yet is refused, and Android only asks twice before the player has to dig into Settings. So it
-   * waits for the first cleared level, or for the player turning the setting on themselves.
+   * yet is refused, and Android only asks twice before the player has to dig into Settings.
+   *
+   * Nor on the first clear, which already carries the victory, the level-up, the first drop and
+   * the spell card: the OS dialog landed on top of all of it. The second clear is the first quiet
+   * moment where the player has a reason to want reminding.
    */
   private maybeScheduleReminder(force = false): void {
     if (!this.save.settings.notifications) return;
-    if (!force && this.save.best < 1) return;
+    if (!force && this.save.best < 2) return;
     void platform.scheduleReminder(1, 'Wizard 1v1s', 'Your daily reward is ready. The tower awaits!', nextRewardTime());
   }
 
@@ -429,16 +497,22 @@ export class UI {
 
 
   // ---------------------------------------------------------------- battle
-  private startBattle(level: number, training: boolean, challenge: Challenge | null = null): void {
+  private startBattle(level: number, training: boolean, challenge: Challenge | null = null, ftue = false): void {
     unlockAudio();
     this.training = training;
     this.duel = null;
     this.challenge = challenge;
     this.battleLevel = level;
-    const enemy = challenge ? challenge.enemy : enemyForLevel(level);
+    const enemy = challenge ? challenge.enemy
+      : ftue ? { ...enemyForLevel(1), hp: FTUE_ENEMY_HP, damage: 6, castInterval: 2.6 }
+      : enemyForLevel(level);
     const stats = computeStats(this.save);
-    const loadout = this.save.loadout.map(id => SPELL_BY_ID[id]).filter(Boolean);
-    this.battle = new Battle({ enemy, stats, loadout, training });
+    const loadout = (ftue ? ['spark'] : this.save.loadout).map(id => SPELL_BY_ID[id]).filter(Boolean);
+    analytics.track('battle_start', { level, training, challenge: !!challenge, ftue });
+    const battle = new Battle({ enemy, stats, loadout, training });
+    this.battle = battle;
+    this.scripted = ftue ? battle : null;
+    this.battleStartedAt = performance.now();
     this.armRecognizers(loadout);
 
     if (!this.arena) this.arena = new Arena(this.arenaEl);
@@ -452,6 +526,7 @@ export class UI {
     setMusic('battle');
     if (enemy.boss && !training) sfx.boss();
     this.banner(training ? 'TRAINING' : challenge ? 'DAILY CHALLENGE' : enemy.boss ? 'BOSS' : `LEVEL ${level}`, training ? 'Draw glyphs to test your spells' : enemy.name);
+    if (ftue) this.ftueEnter(0); else this.clearFtue();
 
     this.lastT = performance.now();
     this.stopLoop();
@@ -599,8 +674,10 @@ export class UI {
     const b = this.battle, a = this.arena;
     if (!b || !a) return;
     if (this.paused) { this.lastT = now; return; }
-    const dt = Math.min(0.05, (now - this.lastT) / 1000);
+    let dt = Math.min(0.05, (now - this.lastT) / 1000);
     this.lastT = now;
+    // The scripted duel slows the clock while the player learns to dodge, so it cannot be failed.
+    if (this.ftueStep >= 0) dt *= this.ftueTimeScale;
     if (this.duel) {
       const d = this.duel;
       d.tick(dt);
@@ -610,6 +687,8 @@ export class UI {
       if (c !== this.duelCountdownShown) { this.duelCountdownShown = c; if (c > 0) this.banner(String(c), d.status); else this.banner('DUEL!', `vs ${d.opponentName}`); }
       if (d.outcome && (d.view.overT > 1.8 || d.outcome.reason !== 'ko')) { this.endDuel(); return; }
     } else {
+      // Step 0 is "learn the pad", so the opponent stands there and waits for it.
+      if (this.ftueStep === 0 && this.scripted) this.scripted.enemy.castTimer = 5;
       b.tick(dt);
     }
     const events = b.drainEvents();
@@ -713,7 +792,10 @@ export class UI {
 
   private dodge(dir: -1 | 1): void {
     if (!this.battle || this.paused) return;
-    if (this.battle.dodge(dir)) { sfx.dodge(); this.save.stats.dodges++; if (this.save.settings.haptics) platform.haptic('light'); }
+    if (this.battle.dodge(dir)) {
+      sfx.dodge(); this.save.stats.dodges++; if (this.save.settings.haptics) platform.haptic('light');
+      if (this.ftueStep === 1) this.ftueEnter(2);
+    }
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -739,7 +821,13 @@ export class UI {
             const chip = this.hud.chips.get(ev.spell.id); if (chip) { chip.classList.add('flash'); setTimeout(() => chip.classList.remove('flash'), 220); }
           } else sfx.cast(0.6);
           break;
-        case 'telegraph': sfx.telegraph(); if (ev.kind === 'heal') this.popup('Healing...', 'enemy', 'small', '#7dff9b'); if (ev.kind === 'shield') this.popup('Shielding', 'enemy', 'small', '#6ea8ff'); break;
+        case 'telegraph':
+          if (this.ftueStep === 1 && this.battle) {
+            const safe = [0, 1, 2].find(l => !ev.lanes.includes(l)) ?? 1;
+            const side = safe < this.battle.player.lane ? 0 : 1;
+            this.hud.dodgeBtns[side]?.classList.add('pulse');
+          }
+          sfx.telegraph(); if (ev.kind === 'heal') this.popup('Healing...', 'enemy', 'small', '#7dff9b'); if (ev.kind === 'shield') this.popup('Shielding', 'enemy', 'small', '#6ea8ff'); break;
         case 'damage':
           if (ev.who === 'enemy') { if (!ev.dot) sfx.hitEnemy(); this.popup(`-${fmt(ev.amount)}`, 'enemy', ev.amount >= 60 ? 'big' : ev.dot ? 'small' : '', ev.dot ? ev.color : '#ffffff'); if (ev.absorbed) this.popup(`${fmt(ev.absorbed)} blocked`, 'enemy', 'small', '#6ea8ff'); }
           else { if (!ev.dot) { sfx.hitPlayer(); if (this.save.settings.haptics) platform.haptic('medium'); } this.popup(`-${fmt(ev.amount)}`, 'player', ev.dot ? 'small' : '', ev.dot ? ev.color : '#ff6a6a'); if (ev.absorbed) { sfx.shield(); this.popup(`${fmt(ev.absorbed)} blocked`, 'player', 'small', '#6ea8ff'); } }
@@ -922,6 +1010,7 @@ export class UI {
     const stats = computeStats(this.save);
     if (!this.save.loadout.includes(spell.id) && this.save.loadout.length < stats.slots) this.save.loadout.push(spell.id);
     this.save.unseen.push(spell.id);
+    analytics.track('spell_discovered', { spell: spell.id, level: this.battleLevel, secret: !!spell.secret });
     this.commit();
     this.afterProgress();
     if (this.save.settings.haptics) platform.haptic('success');
@@ -1018,6 +1107,7 @@ export class UI {
       return;
     }
     const r = b.cast(spell.id);
+    if (r === 'ok' && this.ftueStep === 0) this.ftueEnter(1);
     if (r === 'ok') { pad.classList.add('ok'); this.castMessage(`${spell.name}!`, false); }
     else pad.classList.add('bad');
   }
@@ -1080,9 +1170,19 @@ export class UI {
     // Equipment only comes from here and from chests, so a win is always worth playing out.
     let drop: GrantResult | null = null;
     if (outcome === 'win' && !this.training) {
-      const item = rollLevelDrop(level, enemy.boss, level > this.save.best, this.save.elements);
+      // The scripted duel always drops a Fine piece. A guaranteed reward that turns out to be a
+      // duplicate of the starter kit reads as 'you got nothing', which is the wrong first lesson,
+      // and Fine is the lowest rarity that can channel an element.
+      const item = this.ftueStep >= 0
+        ? rollItem({ level, boss: false, owned: this.save.elements, minRarity: 2 })
+        : rollLevelDrop(level, enemy.boss, level > this.save.best, this.save.elements);
       if (item) drop = grantItem(this.save, item);
     }
+    analytics.track('battle_end', {
+      level, outcome, seconds: Math.round((performance.now() - this.battleStartedAt) / 1000),
+      hpLeft: Math.max(0, Math.round(b.player.hp)),
+      casts: b.casts, ftue: this.ftueStep >= 0,
+    });
     if (outcome === 'win') {
       this.save.wins++;
       if (enemy.boss) this.save.stats.bossWins++;
@@ -1090,9 +1190,17 @@ export class UI {
       if (level > this.save.best && !challenge) {
         const first = this.save.best === 0;
         this.save.best = level;
+        analytics.track('level_cleared', { level });
         void api.postScore(this.save.deviceId, this.save.name, level);
-        // A wizard who has just cleared their first level has a reason to want reminding.
-        if (first) this.maybeScheduleReminder();
+        // Asked on the second clear, once the scripted duel and its cards are out of the way.
+        if (!first && this.save.best === 2) this.maybeScheduleReminder();
+        // One starter spell per level for the first three, each introduced on its own card.
+        const gift = FTUE_GIFTS[this.save.best];
+        if (gift && this.save.discovered.includes(gift) && !this.save.loadout.includes(gift)
+          && this.save.loadout.length < computeStats(this.save).slots) {
+          this.save.loadout.push(gift);
+          this.pendingGift = SPELL_BY_ID[gift];
+        }
       }
       if (!challenge) { this.save.level = Math.min(MAX_LEVEL, Math.max(this.save.level, level + 1)); this.pickedLevel = Math.min(MAX_LEVEL, level + 1); }
       if (this.save.settings.haptics) platform.haptic('success');
@@ -1100,6 +1208,11 @@ export class UI {
       this.save.losses++;
       this.pickedLevel = level;
       if (this.save.settings.haptics) platform.haptic('error');
+    }
+    if (this.ftueStep >= 0) {
+      this.save.ftue = Math.max(this.save.ftue, FTUE_BATTLE_DONE);
+      analytics.track('ftue_done', { outcome });
+      this.clearFtue();
     }
     this.challenge = null;
     this.commit();
@@ -1151,6 +1264,32 @@ export class UI {
     card.append(row);
     s.append(card);
     this.show('result');
+
+    // The spell handed over for clearing this level, then the pitch for the whole game.
+    const gift = this.pendingGift;
+    this.pendingGift = null;
+    if (gift) {
+      setTimeout(() => this.openOverlay((box, close) => {
+        box.append(el('h2', '', 'NEW SPELL'));
+        const row = el('div', 'discovery-row');
+        const info = el('div', 'discovery-info');
+        info.append(el('div', 'discovery-name', gift.name), el('div', 'discovery-desc', gift.desc));
+        row.append(glyphCanvas(gift, 64), info);
+        box.append(row, el('div', 'note', 'Equipped, and in your spellbook. Draw it the way the arrows point.'),
+          btn('GOT IT', 'gold big', close));
+      }), 650);
+    } else if (outcome === 'win' && this.save.best >= 3 && this.save.ftue < FTUE_ALL_DONE) {
+      this.save.ftue = FTUE_ALL_DONE;
+      this.commit();
+      setTimeout(() => this.openOverlay((box, close) => {
+        box.append(el('h2', '', 'THE CODEX'),
+          el('div', 'note', `There are ${LISTED_SPELLS} spells in the codex. You know ${this.save.discovered.length}.`),
+          el('div', 'note gold-note', 'Some are not in the codex at all.'),
+          el('div', 'note', 'Every spell is a shape. Wear an element\u2019s gear and its deeper spells become findable \u2014 draw one in battle and it is yours.'),
+          btn('OPEN THE CODEX', 'gold big', () => { close(); this.showSpellbook('codex'); }),
+          btn('Later', 'ghost', close));
+      }), 650);
+    }
   }
 
   private leaveTraining(): void {
@@ -1200,6 +1339,7 @@ export class UI {
   showShop(tab: ShopTab): void {
     this.stopLoop();
     setMusic('menu');
+    analytics.track('shop_view', { tab });
     this.shopTab = tab;
     this.renderShop();
     this.show('shop');
@@ -1307,6 +1447,7 @@ export class UI {
         this.save.coins += amount;
         this.save.earned += amount;
         this.save.adsWatched++;
+        analytics.track('ad_watched', { amount });
         sfx.coin();
         this.commit();
         this.afterProgress();
@@ -1406,6 +1547,7 @@ export class UI {
   }
 
   private grantPurchase(sku: string, restoring = false): void {
+    if (!restoring) analytics.track('purchase_complete', { sku });
     if (sku === CONFIG.skus.coinsSmall && !restoring) { this.save.coins += CONFIG.coinsSmall; this.save.earned += CONFIG.coinsSmall; }
     if (sku === CONFIG.skus.coinsLarge && !restoring) { this.save.coins += CONFIG.coinsLarge; this.save.earned += CONFIG.coinsLarge; }
     if (sku === CONFIG.skus.doubleCoins) this.save.passes.doubleCoins = true;
@@ -1717,6 +1859,7 @@ export class UI {
     const toggles: [keyof SaveData['settings'], string, string][] = [
       ['music', 'Music', 'The generative soundtrack.'], ['sfx', 'Sound effects', 'Casts, hits and clicks.'],
       ['haptics', 'Vibration', 'A small buzz on dodges and hits.'], ['notifications', 'Reminders', 'One notification a day when your reward is ready.'],
+      ['analytics', 'Share gameplay data', 'Anonymous counts of levels played and spells cast, so the game can be improved. No personal data.'],
     ];
     for (const [key, name, desc] of toggles) {
       const row = el('div', 'row-card');
@@ -1725,6 +1868,7 @@ export class UI {
         this.save.settings[key] = !this.save.settings[key];
         if (key === 'music') setMusicEnabled(this.save.settings.music);
         if (key === 'sfx') setSfxEnabled(this.save.settings.sfx);
+        if (key === 'analytics') analytics.setEnabled(this.save.settings.analytics);
         if (key === 'notifications') {
           if (this.save.settings.notifications) this.maybeScheduleReminder(true);
           else void platform.cancelReminders();

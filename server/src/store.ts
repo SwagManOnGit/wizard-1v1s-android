@@ -4,17 +4,32 @@ import { dirname } from 'node:path';
 import type { GhostTape, LeaderboardEntry } from '@wizard/shared';
 
 export interface PlayerRecord { deviceId: string; name: string; best: number; rating: number; wins: number; losses: number; updatedAt: number }
-interface Db { players: Record<string, PlayerRecord>; ghosts: (GhostTape & { id: string; deviceId: string; plays: number; beaten: number })[] }
+
+/**
+ * Telemetry is kept as a per-device set of milestones rather than a log of every event: the
+ * question worth answering is "how many players reached each step", and that needs one row per
+ * player, not one row per tap.
+ */
+export interface DeviceRecord { first: number; last: number; sessions: number; steps: Record<string, number> }
+interface Db {
+  players: Record<string, PlayerRecord>;
+  ghosts: (GhostTape & { id: string; deviceId: string; plays: number; beaten: number })[];
+  devices: Record<string, DeviceRecord>;
+  events: Record<string, number>;
+}
+
+/** The funnel, in order. Every one of these is a step a player can fall out of. */
+export const FUNNEL_STEPS = ['install', 'battle_start', 'ftue_done', 'level_cleared', 'session_2', 'level_5', 'spell_discovered', 'purchase_complete'] as const;
 
 const MAX_GHOSTS = 2000;
 
 export class Store {
-  private db: Db = { players: {}, ghosts: [] };
+  private db: Db = { players: {}, ghosts: [], devices: {}, events: {} };
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private path: string) {
     try { this.db = JSON.parse(readFileSync(path, 'utf8')) as Db; } catch { /* fresh store */ }
-    this.db.players ??= {}; this.db.ghosts ??= [];
+    this.db.players ??= {}; this.db.ghosts ??= []; this.db.devices ??= {}; this.db.events ??= {};
   }
 
   private flush(): void {
@@ -36,6 +51,43 @@ export class Store {
     const p = this.player(deviceId, name);
     if (best > p.best) { p.best = best; p.updatedAt = Date.now(); this.flush(); }
     return p;
+  }
+
+  // ---- telemetry ------------------------------------------------------------------
+  /** Records a batch of client events as milestones. Unknown names are counted but not funnelled. */
+  recordEvents(deviceId: string, events: { name: string; props?: Record<string, unknown> }[]): number {
+    if (!deviceId || !Array.isArray(events)) return 0;
+    const now = Date.now();
+    const d = (this.db.devices[deviceId] ??= { first: now, last: now, sessions: 0, steps: { install: now } });
+    d.last = now;
+    let kept = 0;
+    for (const e of events) {
+      if (!e || typeof e.name !== 'string') continue;
+      const name = e.name.slice(0, 40);
+      this.db.events[name] = (this.db.events[name] ?? 0) + 1;
+      kept++;
+      if (name === 'session_start') {
+        d.sessions++;
+        if (d.sessions >= 2) d.steps.session_2 ??= now;
+      }
+      // A step is stamped the first time it happens and never overwritten, so the funnel counts
+      // players rather than repeats.
+      if (name === 'battle_start' || name === 'ftue_done' || name === 'level_cleared'
+        || name === 'spell_discovered' || name === 'purchase_complete') d.steps[name] ??= now;
+      if (name === 'level_cleared' && Number(e.props?.level) >= 5) d.steps.level_5 ??= now;
+    }
+    this.flush();
+    return kept;
+  }
+
+  /** Unique devices that reached each funnel step, plus raw event counts. */
+  funnel(): { devices: number; steps: Record<string, number>; events: Record<string, number> } {
+    const steps: Record<string, number> = {};
+    for (const step of FUNNEL_STEPS) steps[step] = 0;
+    for (const d of Object.values(this.db.devices)) {
+      for (const step of FUNNEL_STEPS) if (d.steps[step]) steps[step]++;
+    }
+    return { devices: Object.keys(this.db.devices).length, steps, events: { ...this.db.events } };
   }
 
   recordDuel(winner: string, loser: string, ranked: boolean): [number, number] {
