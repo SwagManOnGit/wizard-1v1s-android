@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
     "test": "npm run typecheck && npm run test -w server",
     "android:sync": "npm run build -w app && npx -w app cap sync android",
-    "android:open": "npx -w app cap open android"
+    "android:open": "npx -w app cap open android",
+    "seal": "tsx tools/seal.ts"
   }
 }

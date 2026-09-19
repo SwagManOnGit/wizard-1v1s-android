@@ -42,6 +42,11 @@ build proving it compiles is not the same as proving it works on a device — sa
   (`spellStroke`), and `Recognizer.add` defaults to a single direction. A shape drawn backwards is
   a different spell. If you add a glyph or reverse an existing one, run `test:glyphs` — it checks
   all 146 direction variants against each other and must stay at 100%.
+- **The apocrypha are sealed.** Edit them in `shared/src/secrets.source.ts`, then run `npm run seal`
+  and commit both that file and the generated `shared/src/secrets.data.ts`. `npm test` fails if the
+  two disagree. The point is that the shipped bundle never spells out which sign an unlisted spell
+  wants; `shared/src/secrets.ts` explains exactly how much that is worth, which is less than it
+  sounds.
 - **Secret spells (`secret: true`) are invisible.** Not listed in the codex, not counted in any
   total, not hinted at. Anything that counts or displays spells must filter them through
   `codexSpells`/`elementSpells(el, known)` or `LISTED_SPELLS`, never `SPELLS.length`.
