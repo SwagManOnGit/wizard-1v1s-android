@@ -19,6 +19,7 @@ import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
 import { Arena, WizardView } from './scene';
+import { TERRAIN_SCALE, drawTrail, paintTerrain } from './terrain';
 import { CONFIG, platform, webPlatform } from './platform';
 import { setMusicEnabled, setSfxEnabled } from './audio';
 import { api } from './net/api';
@@ -71,6 +72,10 @@ function lookFromName(name: string): WizardLook {
 }
 
 
+
+/** The level map: pixels of trail per level, and the gap left above level 500 for the crest. */
+const MAP_STEP = 78;
+const MAP_TOP = 150;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -265,14 +270,6 @@ export class UI {
   private seasonGained = 0;
   /** How many wizards know each spell, fetched when the spellbook opens. Null until it answers. */
   private board: { players: number; spells: Record<string, { holders: number; first: string | null }> } | null = null;
-  /** Which block of fifty levels the map is showing. -1 until the first render picks one. */
-  private chapter = -1;
-  /**
-   * The map opens on demand. Collapsed it is a couple of rows around the current level, which is
-   * what most sessions want; the quests, the rumour and the challenge are all competing for the
-   * same screen, and the full chapter pushed them off it.
-   */
-  private mapOpen = false;
   private loopId = 0;
   private lastT = 0;
   private paused = false;
@@ -488,6 +485,10 @@ export class UI {
     goalStrip.addEventListener('click', () => { unlockAudio(); sfx.click(); goal.go(); });
 
     const body = el('div', 'hub-body');
+    const overlayTop = el('div', 'map-top');
+    const dailyRow = el('div', 'drawer-row');
+    const dailyBody = el('div', 'drawer-host');
+    overlayTop.append(dailyRow, dailyBody);
 
     // Three quests a day. Progress is a delta against counters the game already keeps, so a quest
     // can never disagree with the statistics screen.
@@ -496,7 +497,7 @@ export class UI {
     const quests = questsToday(this.save);
     const doneCount = quests.filter(q => q.done).length;
     const claimable = canClaimQuests(this.save);
-    body.append(this.drawer('quests', 'scroll', '#ffcc33', 'DAILY QUESTS',
+    dailyRow.append(this.drawer('quests', 'scroll', '#ffcc33', 'QUESTS',
       claimable ? `${chest.name} ready` : this.save.quests.claimed ? 'Claimed' : `${doneCount}/${quests.length} done`,
       claimable, qCard => {
         qCard.classList.add('quests');
@@ -514,12 +515,12 @@ export class UI {
           qCard.append(row);
         }
         if (claimable) qCard.append(btn(`CLAIM ${chest.name.toUpperCase()}`, 'gold', () => this.claimQuests()));
-      }));
+      }, () => this.showMenu(), dailyBody));
 
     // Daily challenge sits at the top: one modified fight a day for triple coins.
     const ch = dailyChallenge(this.save);
     const open = challengeAvailable(this.save);
-    body.append(this.drawer('challenge', 'flame', '#ff8a2a', 'DAILY CHALLENGE',
+    dailyRow.append(this.drawer('challenge', 'flame', '#ff8a2a', 'CHALLENGE',
       open ? ch.name : 'Done today', open, chCard => {
         chCard.classList.add('challenge');
         const chInfo = el('div');
@@ -528,90 +529,143 @@ export class UI {
         chCard.append(uiIcon('flame', 34, '#ff8a2a'), chInfo);
         if (open) chCard.append(btn('FIGHT', 'gold', () => this.startBattle(ch.level, false, ch)));
         else chCard.append(btn('Done today', 'ghost'));
-      }));
+      }, () => this.showMenu(), dailyBody));
 
-    // The level map, cut into chapters of fifty: five hundred tiles at once is a scrollbar, not a map.
+    // The level map: one continuous trail from level 1 to 500, winding up through ten chapters of
+    // terrain. It is its own scroll container, so the hub around it never moves.
+    //
+    // Cost is kept down by never drawing a chapter that nobody is looking at: the terrain canvas and
+    // the fifty buttons of a chapter are built the first time it comes near the viewport and kept
+    // afterwards. Five hundred buttons at once is a stutter on a phone, and nine tenths of them are
+    // off screen at any moment.
     const maxPick = Math.min(MAX_LEVEL, this.save.best + 1);
     if (this.pickedLevel > maxPick) this.pickedLevel = maxPick;
-    const reached = chapterOf(maxPick);
-    if (this.chapter < 0) this.chapter = chapterOf(this.pickedLevel);
-    if (this.chapter > reached) this.chapter = reached;
-    const chapterRow = el('div', 'chapter-row');
-    const grid = el('div', 'level-grid');
-    const mapToggle = btn('', 'map-toggle ghost small', () => {
-      this.mapOpen = !this.mapOpen;
-      applyMapState();
-      scrollToTile();
-    });
-    const applyMapState = (): void => {
-      grid.classList.toggle('collapsed', !this.mapOpen);
-      chapterRow.classList.toggle('hidden', !this.mapOpen);
-      mapToggle.textContent = this.mapOpen ? 'Hide the map' : `Open the map · chapter ${this.chapter + 1} of ${CHAPTERS}`;
-    };
-    /**
-     * Brings the current level into view inside the map, and only inside the map: the grid is its
-     * own scroll container so this can never move the hub. Measured on the second frame because the
-     * grid takes its height from the viewport, and on the first frame that height is not settled.
-     */
-    const scrollToTile = (): void => {
-      const tile = tiles.get(this.pickedLevel);
-      if (!tile) return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const gb = grid.getBoundingClientRect(), tb = tile.getBoundingClientRect();
-        const want = grid.scrollTop + (tb.top - gb.top) - (gb.height - tb.height) / 2;
-        grid.scrollTop = Math.max(0, Math.min(want, grid.scrollHeight - grid.clientHeight));
-      }));
-    };
+
+    const map = el('div', 'level-map');
     const info = el('div', 'level-info');
     const playBtn = btn('BATTLE', 'gold big', () => this.startBattle(this.pickedLevel, false));
-    const tiles = new Map<number, HTMLElement>();
+    const nodes = new Map<number, HTMLElement>();
+
     const renderInfo = (): void => {
       const e = enemyForLevel(this.pickedLevel);
       const cleared = this.pickedLevel <= this.save.best;
-      info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span>`;
+      info.innerHTML = '';
+      const title = el('div', 'level-title');
+      title.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span>`;
+      info.append(title);
       const stats = el('div', 'level-stats');
-      const stat = (icon: Parameters<typeof uiIcon>[0], tint: string, text: string): HTMLElement => {
+      const stat = (icon: UiIconName, tint: string, text: string): HTMLElement => {
         const box = el('div', 'level-stat');
         box.append(uiIcon(icon, 20, tint), el('span', '', text));
         return box;
       };
-      stats.append(stat('heart', '#ff6a6a', `${fmt(e.hp)}`), stat('sword', '#d8dce8', `${e.damage}`),
-        stat('coin', '#ffcc33', cleared ? `${fmt(Math.round(e.coins * 0.6))} replay` : `${fmt(e.coins)}`));
+      const coin = stat('coin', cleared ? '#8a7a4a' : '#ffcc33', fmt(cleared ? Math.round(e.coins * 0.6) : e.coins));
+      if (cleared) coin.title = 'Replays pay 60%';
+      stats.append(stat('heart', '#ff6a6a', `${fmt(e.hp)}`), stat('sword', '#d8dce8', `${e.damage}`), coin);
       info.append(stats);
-      tiles.forEach((t, L) => t.classList.toggle('picked', L === this.pickedLevel));
+      nodes.forEach((n, L) => n.classList.toggle('picked', L === this.pickedLevel));
       playBtn.textContent = `BATTLE: LEVEL ${this.pickedLevel}`;
     };
-    const renderChapter = (): void => {
-      chapterRow.innerHTML = ''; grid.innerHTML = ''; tiles.clear();
-      for (let c = 0; c < CHAPTERS; c++) {
-        const locked = c > reached;
-        const t = el('button', `chapter ${c === this.chapter ? 'active' : ''} ${locked ? 'locked' : ''}`);
-        t.innerHTML = `<b>${c * CHAPTER_SIZE + 1}-${(c + 1) * CHAPTER_SIZE}</b><i>${locked ? '???' : chapterName(c)}</i>`;
-        if (locked) t.disabled = true;
-        else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.chapter = c; renderChapter(); });
-        chapterRow.append(t);
+
+    /** Where a level sits on the trail, as a fraction of the map's width and an absolute y. */
+    const nodeX = (level: number): number => 0.5 + Math.sin((level - 1) * 0.52) * 0.33;
+    const nodeY = (level: number): number => (MAX_LEVEL - level) * MAP_STEP + MAP_STEP / 2 + MAP_TOP;
+
+    const built = new Set<number>();
+    const sections: HTMLElement[] = [];
+    const buildChapter = (c: number): void => {
+      if (built.has(c)) return;
+      built.add(c);
+      const section = sections[c];
+      const width = map.clientWidth || 360;
+      const first = c * CHAPTER_SIZE + 1, last = (c + 1) * CHAPTER_SIZE;
+
+      const canvas = document.createElement('canvas');
+      canvas.className = 'map-terrain';
+      const cw = Math.max(1, Math.round(width / TERRAIN_SCALE));
+      const chH = CHAPTER_SIZE * MAP_STEP;
+      const ch = Math.max(1, Math.round(chH / TERRAIN_SCALE));
+      canvas.width = cw; canvas.height = ch;
+      const g = canvas.getContext('2d')!;
+      paintTerrain(g, cw, ch, c);
+      // One node beyond each end so the trail runs through the chapter seams without a gap.
+      const pts: { x: number; y: number }[] = [];
+      for (let L = Math.min(MAX_LEVEL, last + 1); L >= Math.max(1, first - 1); L--) {
+        pts.push({ x: nodeX(L) * cw, y: (nodeY(L) - (MAX_LEVEL - last) * MAP_STEP - MAP_TOP) / TERRAIN_SCALE });
       }
-      const first = this.chapter * CHAPTER_SIZE + 1;
-      for (let L = first; L < first + CHAPTER_SIZE; L++) {
-        const boss = isBossLevel(L);
-        const lord = isChapterBoss(L);
+      drawTrail(g, pts, c);
+      section.append(canvas);
+
+      const banner = el('div', 'map-banner');
+      banner.append(el('b', '', chapterName(c)), el('small', '', `Levels ${first}–${last}`));
+      section.append(banner);
+
+      for (let L = first; L <= last; L++) {
+        const boss = isBossLevel(L), lord = isChapterBoss(L);
         const state = L <= this.save.best ? 'done' : L === maxPick ? 'next' : 'locked';
-        const t = el('button', `level-tile ${state} ${boss ? 'boss' : ''} ${lord ? 'lord' : ''}`);
-        t.innerHTML = `<b>${L}</b>${boss ? `<i>${lord ? 'LORD' : 'BOSS'}</i>` : ''}`;
-        if (state === 'locked') t.disabled = true;
-        else t.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
-        tiles.set(L, t); grid.append(t);
+        const n = el('button', `map-node ${state} ${boss ? 'boss' : ''} ${lord ? 'lord' : ''} ${L === this.pickedLevel ? 'picked' : ''}`);
+        n.style.left = `${nodeX(L) * 100}%`;
+        n.style.bottom = `${(L - first) * MAP_STEP + MAP_STEP / 2}px`;
+        n.append(el('b', '', String(L)));
+        if (boss) {
+          const mark = lord ? uiIcon('trophy', 20, '#ffcc33') : uiIcon('skull', 18, '#ff8f8f');
+          mark.className = 'map-mark';
+          n.append(mark);
+        }
+        if (state === 'locked') n.disabled = true;
+        else n.addEventListener('click', () => { unlockAudio(); sfx.click(); this.pickedLevel = L; renderInfo(); });
+        nodes.set(L, n);
+        section.append(n);
       }
-      // Scrolled by hand: scrollIntoView would drag every scrollable ancestor sideways with it,
-      // which on a phone means the whole hub slides off screen.
-      const active = chapterRow.querySelector('.chapter.active') as HTMLElement | null;
-      if (active) chapterRow.scrollLeft = active.offsetLeft - chapterRow.clientWidth / 2 + active.offsetWidth / 2;
-      renderInfo();
-      applyMapState();
-      scrollToTile();
     };
-    renderChapter();
-    body.append(chapterRow, grid, mapToggle);
+
+    // Chapters are stacked bottom to top: level 1 at the foot of the map, 500 at its head.
+    for (let c = CHAPTERS - 1; c >= 0; c--) {
+      const section = el('div', `map-chapter ${c > chapterOf(maxPick) ? 'unseen' : ''}`);
+      section.style.height = `${CHAPTER_SIZE * MAP_STEP}px`;
+      sections[c] = section;
+      map.append(section);
+    }
+
+    // The head of the map, above level 500.
+    const crest = el('div', 'map-crest');
+    crest.append(uiIcon('spark', 30, '#ffcc33'), el('b', '', 'MORE LEVELS COMING SOON'),
+      el('small', '', `Five hundred wizards is where the tower ends, for now.`));
+    map.prepend(crest);
+
+    const visibleChapters = (): void => {
+      const top = map.scrollTop, bottom = top + map.clientHeight;
+      for (let c = 0; c < CHAPTERS; c++) {
+        const s = sections[c];
+        const y0 = s.offsetTop, y1 = y0 + s.offsetHeight;
+        if (y1 > top - MAP_STEP * 6 && y0 < bottom + MAP_STEP * 6) buildChapter(c);
+      }
+    };
+
+    const jump = btn('', 'map-jump gold small', () => scrollToNode(true));
+    jump.append(uiIcon('target', 20, '#3a2410'), el('span', '', 'Current level'));
+    const scrollToNode = (smooth = false): void => {
+      const want = Math.max(0, nodeY(this.pickedLevel) - map.clientHeight / 2);
+      map.scrollTo({ top: want, behavior: smooth ? 'smooth' : 'auto' });
+      visibleChapters();
+    };
+
+    map.addEventListener('scroll', () => {
+      visibleChapters();
+      const n = nodes.get(this.pickedLevel);
+      const away = !n || Math.abs(n.getBoundingClientRect().top - map.getBoundingClientRect().top - map.clientHeight / 2) > map.clientHeight * 0.6;
+      jump.classList.toggle('show', away);
+    }, { passive: true });
+
+    const wrap = el('div', 'map-wrap');
+    const overlayBottom = el('div', 'map-bottom');
+    overlayBottom.append(info);
+    wrap.append(map, overlayTop, overlayBottom, jump);
+    body.append(wrap);
+    // Measured on the second frame: the map takes its height from the viewport, and on the first
+    // frame that height is not settled, so every offset would be computed against zero.
+    requestAnimationFrame(() => requestAnimationFrame(() => { visibleChapters(); scrollToNode(); renderInfo(); }));
+
 
     const foot = el('div', 'hub-foot');
     // Duelling is a headline mode, not a thing beside training, so it gets the same weight as the
@@ -626,7 +680,7 @@ export class UI {
     const awardsBtn = btn('Awards', 'ghost small has-icon', () => this.showAchievements());
     awardsBtn.prepend(uiIcon('medal', 20, '#ffcc33'));
     extraRow.append(trainBtn, ranksBtn, awardsBtn);
-    foot.append(info, playBtn, duelBtn, extraRow);
+    foot.append(playBtn, duelBtn, extraRow);
 
     s.append(bar, goalStrip, body, foot);
     this.show('menu');
@@ -2593,7 +2647,8 @@ export class UI {
    * they are asked for, without hiding the fact that something is waiting to be claimed.
    */
   private drawer(id: string, icon: UiIconName, tint: string, title: string, note: string,
-    flag: boolean, fill: (card: HTMLElement) => void, rerender: () => void = () => this.showMenu()): HTMLElement {
+    flag: boolean, fill: (card: HTMLElement) => void, rerender: () => void = () => this.showMenu(),
+    bodyHost?: HTMLElement): HTMLElement {
     const open = this.openDrawer === id;
     const wrap = el('div', `drawer ${open ? 'open' : ''} ${flag ? 'ready' : ''}`);
     const head = el('button', 'drawer-head');
@@ -2607,7 +2662,7 @@ export class UI {
     if (open) {
       const card = el('div', 'card drawer-body');
       fill(card);
-      wrap.append(card);
+      (bodyHost ?? wrap).append(card);
     }
     return wrap;
   }

@@ -203,26 +203,8 @@ canvas { image-rendering: pixelated; }
 /* ---------- level select ---------- */
 #levels { background: var(--bg); }
 .levels-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
-/* The map scrolls inside itself. It used to be an unbounded list in the page flow, so bringing the
-   current level into view scrolled the whole hub and pushed the quests and the rumour off the top. */
-.level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px;
-  max-height: 38vh; overflow-y: auto; scrollbar-width: none; padding-right: 2px; }
-/* Collapsed by default: a couple of rows around the current level is what most sessions want. */
-.level-grid.collapsed { max-height: 128px; }
-.chapter-row.hidden { display: none; }
-.map-toggle { width: 100%; margin-top: 6px; }
-.level-grid::-webkit-scrollbar { display: none; }
-.level-tile { position: relative; height: 58px; border: 3px solid var(--ink); background: var(--win2); color: var(--text); font-size: 26px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 var(--win3); text-shadow: 2px 2px 0 var(--ink); }
-.level-tile i { font-style: normal; font-size: 12px; letter-spacing: 1px; color: var(--red); }
-.level-tile.done { background: var(--green-dark); box-shadow: inset -3px -3px 0 #145a26, inset 3px 3px 0 var(--green); }
-.level-tile.next { background: var(--gold-dark); box-shadow: inset -3px -3px 0 #7a5a10, inset 3px 3px 0 var(--gold); animation: blink 1s steps(2) infinite; }
-.level-tile.locked { background: #1a1640; color: #5a5490; box-shadow: inset -3px -3px 0 #0f0c2a, inset 3px 3px 0 #2a2560; cursor: default; }
-.level-tile.locked i { color: #5a5490; }
-.level-tile.boss:not(.locked) { border-color: var(--red); }
-.level-tile.picked { outline: 3px solid var(--edge); outline-offset: 1px; z-index: 1; }
 @keyframes blink { 50% { filter: brightness(1.25); } }
-.level-info { flex: none; padding: 10px 14px; background: var(--win); border-top: 3px solid var(--ink); font-size: 22px; box-shadow: inset 0 3px 0 var(--win3); }
+.level-info { flex: none; padding: 10px 14px; background: var(--win); font-size: 22px; box-shadow: inset 0 3px 0 var(--win3); }
 .level-info b { color: var(--gold); }
 .level-info small { display: block; color: var(--muted); font-size: 18px; }
 .level-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -440,7 +422,8 @@ canvas { image-rendering: pixelated; }
 .who-sub { font-size: 16px; color: var(--muted); }
 /* min-width:0 matters: without it the chapter strip’s nowrap children set an intrinsic minimum
    width that stretches this box past the viewport and drags the whole map off screen. */
-.hub-body { flex: 1; min-height: 0; min-width: 0; max-width: 100%; overflow-y: auto; padding: 10px; }
+/* The hub no longer scrolls as one column: the drawers stay put and the map scrolls inside it. */
+.hub-body { flex: 1; min-height: 0; min-width: 0; max-width: 100%; padding: 10px; display: flex; flex-direction: column; }
 .hub-foot { flex: none; padding: 8px 12px 12px; background: var(--win); border-top: 3px solid var(--ink); box-shadow: inset 0 3px 0 var(--win3); display: flex; flex-direction: column; gap: 8px; }
 .hub-foot .btn.big { width: 100%; }
 
@@ -528,6 +511,93 @@ canvas { image-rendering: pixelated; }
   box-shadow: inset -2px -2px 0 var(--green-dark), inset 2px 2px 0 #b8ffc4, 0 3px 0 var(--ink);
 }
 .purse-plus:active { transform: translateY(2px); box-shadow: inset -2px -2px 0 var(--green-dark), inset 2px 2px 0 #b8ffc4; }
+
+/* ---------- the level map ----------
+   One trail from level 1 at the foot to level 500 at the head, ten chapters of terrain deep. The
+   map is its own scroll container so the hub around it never moves, and each chapter's terrain is a
+   canvas a fifth of the screen's resolution scaled up: pixel art by intent, and cheap by accident. */
+
+/* The jump button floats over the map, so the map needs a positioned parent that is not itself the
+   scroller: anchoring to a scrolling box would carry the button away with the trail. */
+.map-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
+/* Both strips let taps through everywhere except on their own controls, so the trail can still be
+   dragged in the gaps between them. */
+.map-top, .map-bottom { position: absolute; left: 0; right: 0; padding: 6px; pointer-events: none; z-index: 3; }
+.map-top { top: 0; }
+.map-bottom { bottom: 0; }
+.map-top > *, .map-bottom > * { pointer-events: auto; }
+/* Two heads across, so the dailies cost one row of the map rather than two. */
+.drawer-row { display: flex; gap: 6px; }
+.drawer-row .drawer { flex: 1; min-width: 0; margin: 0; }
+.drawer-row .drawer-head b { font-size: 18px; }
+.drawer-row .drawer-head small { font-size: 15px; }
+.drawer-host:empty { display: none; }
+.drawer-host .drawer-body { margin-top: 6px; border-top-width: 3px; }
+.map-top .drawer-head { min-height: 46px; padding: 5px 10px; background: linear-gradient(180deg, rgba(44,36,146,0.94), rgba(30,26,106,0.94)); }
+.map-bottom .level-info {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 3px solid var(--ink); background: rgba(30,26,106,0.94); padding: 6px 10px; font-size: 19px;
+}
+.level-title { flex: 1 1 44%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-bottom .level-stats { margin-top: 0; flex: none; }
+.level-map {
+  flex: 1; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); border: 3px solid var(--ink); box-shadow: inset 0 3px 0 rgba(0,0,0,0.5);
+  scrollbar-width: none;
+}
+.level-map::-webkit-scrollbar { display: none; }
+
+.map-chapter { position: relative; overflow: hidden; }
+/* A chapter nobody has reached is seen through fog. */
+.map-chapter.unseen::after { content: ''; position: absolute; inset: 0; background: rgba(10,6,32,0.38); pointer-events: none; }
+.map-terrain { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+.map-banner {
+  position: absolute; left: 0; right: 0; top: 0; padding: 5px 10px; text-align: center; pointer-events: none;
+  background: linear-gradient(180deg, rgba(10,6,32,0.85), rgba(10,6,32,0));
+}
+.map-banner b { display: block; font-size: 22px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.map-banner small { font-size: 15px; color: #cfd6ff; text-shadow: 1px 1px 0 var(--ink); }
+
+/* A node sits on the trail by its centre, which is why it is translated back by half of itself. */
+.map-node {
+  position: absolute; transform: translate(-50%, 50%); width: 50px; height: 50px; padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 3px solid var(--ink); border-radius: 50%; background: var(--win2); color: var(--text);
+  font-size: 22px; line-height: 1;
+  box-shadow: inset -3px -3px 0 rgba(0,0,0,0.45), inset 3px 3px 0 rgba(255,255,255,0.25), 0 4px 0 rgba(0,0,0,0.5);
+}
+.map-node:active { transform: translate(-50%, calc(50% + 3px)); }
+.map-node b { text-shadow: 2px 2px 0 rgba(0,0,0,0.6); }
+.map-mark { position: absolute; top: -7px; right: -5px; filter: drop-shadow(1px 1px 0 var(--ink)); }
+.map-node.locked .map-mark { filter: grayscale(1) brightness(0.55); }
+.map-node.done { background: var(--green-dark); box-shadow: inset -3px -3px 0 #145a26, inset 3px 3px 0 var(--green), 0 4px 0 rgba(0,0,0,0.5); }
+.map-node.next { background: var(--gold-dark); box-shadow: inset -3px -3px 0 #7a5a10, inset 3px 3px 0 var(--gold), 0 4px 0 rgba(0,0,0,0.5); animation: blink 1s steps(2) infinite; }
+.map-node.locked { background: #1a1640; color: #5a5490; box-shadow: inset -3px -3px 0 #0f0c2a, inset 3px 3px 0 #2a2560; cursor: default; }
+
+.map-node.boss { width: 58px; height: 58px; font-size: 25px; }
+.map-node.boss:not(.locked) { border-color: var(--red); }
+.map-node.lord { width: 70px; height: 70px; font-size: 28px; }
+.map-node.lord:not(.locked) { border-color: var(--gold); }
+
+.map-node.picked { outline: 4px solid var(--edge); outline-offset: 2px; z-index: 2; }
+
+/* Above level 500. */
+.map-crest {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 26px 16px 34px; text-align: center;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--win) 100%);
+  border-bottom: 3px solid var(--ink);
+}
+.map-crest b { font-size: 24px; letter-spacing: 1px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.map-crest small { font-size: 16px; color: var(--muted); }
+
+/* Only offered once the trail has been scrolled away from where the player actually is. */
+.map-jump {
+  position: absolute; left: 50%; bottom: 84px; font-size: 17px; padding: 4px 10px; min-height: 40px; transform: translateX(-50%) translateY(8px);
+  opacity: 0; pointer-events: none; transition: opacity 0.15s, transform 0.15s; z-index: 4;
+}
+.map-jump.show { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
 
 /* ---------- the loadout screen ----------
    Laid out the way Clash Royale lays out a battle deck: the thing you own at the top, a banner
@@ -688,17 +758,6 @@ canvas { image-rendering: pixelated; }
   background: var(--blue-dark); border: 3px solid var(--edge); box-shadow: inset -3px -3px 0 #101a5a, inset 3px 3px 0 var(--blue); text-shadow: 2px 2px 0 var(--ink); }
 /* var(--blue-light) measured 4.08:1 here, which is fine for large text and not for a 13px label. */
 .wiz-level small { display: block; font-size: 13px; letter-spacing: 2px; color: #a8c2ff; text-shadow: none; }
-.chapter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none;
-  min-width: 0; max-width: 100%; }
-.chapter-row::-webkit-scrollbar { display: none; }
-.chapter { flex: none; padding: 5px 10px; background: var(--win2); color: var(--text); border: 3px solid var(--ink); font-size: 20px; line-height: 1.15;
-  box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 var(--win3); text-align: center; white-space: nowrap; }
-.chapter i { display: block; font-style: normal; font-size: 14px; color: var(--muted); }
-.chapter.active { border-color: var(--gold); color: var(--gold2); background: var(--blue-dark); }
-.chapter.locked { background: #1a1640; color: #5a5490; cursor: default; }
-.chapter.locked i { color: #3f3a70; }
-.level-tile.lord:not(.locked) { border-color: var(--gold); }
-.level-tile.lord:not(.locked) i { color: var(--gold); }
 .levelup { align-self: center; padding: 5px 12px; font-size: 24px; letter-spacing: 2px; color: var(--gold2); background: var(--blue-dark);
   border: 3px solid var(--gold); text-shadow: 2px 2px 0 var(--ink); animation: blink 0.6s steps(2) 3; }
 .kind.secret { color: var(--magenta); }

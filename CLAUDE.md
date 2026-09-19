@@ -40,6 +40,21 @@ https://localhost and an http://localhost:2567 call from it is mixed content. Re
 both platform defaults and reach the server over https. If Rankings says it needs a connection on
 the emulator, check the reverse first.
 
+## The level map
+
+One trail from level 1 at the foot to level 500 at the head, in `showMenu`, with the ground painted
+by `app/src/terrain.ts`. A chapter is fifty levels and one biome, and a biome is one tier, so the map
+and the arena a player is about to fight in are the same place.
+
+Terrain is drawn at a fifth of the screen resolution and scaled with `image-rendering: pixelated`:
+a whole chapter costs about as much memory as one icon. Chapters build lazily as they come near the
+viewport, so opening the hub does not lay out five hundred buttons at once; building all ten takes
+about 100ms in total, spread across the scrolling.
+
+**The trail and the buttons read their positions from the same two functions.** Change `nodeX` or
+`MAP_STEP` and both move together; hard-code either one anywhere else and the path drifts off the
+nodes at some scroll position you will not be looking at.
+
 ## The wizard model is code
 
 `tools/wizard-model.py` builds the whole Wizard collection from primitives, exports
