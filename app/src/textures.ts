@@ -141,7 +141,7 @@ export function texture(kind: string, repeat = 1): THREE.Texture {
 
 /** Which texture each named GLB material gets. */
 export const MATERIAL_TEXTURE: Record<string, string> = {
-  Robe: 'cloth', Hat: 'cloth', Cape: 'cloth', Trim: 'gold', Skin: 'skin', Beard: 'beard', Wood: 'wood', Dark: 'skin',
+  Robe: 'cloth', Hat: 'cloth', Cape: 'cloth', Trim: 'gold', Skin: 'skin', Beard: 'beard', Boots: 'wood', Wood: 'wood', Dark: 'skin',
   Stone: 'stone', StoneDark: 'stone', StoneLight: 'stone', Metal: 'metal', Gold: 'gold', Roof: 'roof', Banner: 'banner',
   Grass: 'grass', Dirt: 'dirt', Bark: 'wood', Leaf: 'leaf', Rock: 'stone', Obsidian: 'obsidian', Lava: 'lava', Crystal: 'crystal', Bone: 'bone',
 };

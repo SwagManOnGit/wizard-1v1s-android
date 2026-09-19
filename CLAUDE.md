@@ -40,6 +40,30 @@ https://localhost and an http://localhost:2567 call from it is mixed content. Re
 both platform defaults and reach the server over https. If Rankings says it needs a connection on
 the emulator, check the reverse first.
 
+## The wizard model is code
+
+`tools/wizard-model.py` builds the whole Wizard collection from primitives, exports
+`app/src/assets/models/wizard.glb` and saves the blend. Edit the script, never the mesh:
+
+```bash
+"/c/Program Files/Blender Foundation/Blender 5.1/blender.exe" -b art/wizard-1v1s-models.blend --python tools/wizard-model.py
+```
+
+Add `-- --preview <dir>` to render a front and three-quarter view instead of exporting, and
+`-- --no-save` to leave the blend alone. `art/wizard-1v1s-models.blend` is the live source;
+`app/art/` holds an older copy that nothing reads.
+
+**Wind every face outwards.** An inside-out solid renders perfectly in Blender, which draws back
+faces, and then vanishes in the game, which culls them. `add_mesh` runs
+`bmesh.ops.recalc_face_normals` on everything for this reason; the beard was invisible in the
+app while looking right in every Blender render until it did.
+
+**The names are a contract with `app/src/scene.ts`:** materials `Robe`, `Cape`, `Hat`, `Trim`,
+`Skin`, `Beard`, `Boots` are recoloured per player; one empty per hat style named
+`Hat_<Style>` and per staff head named `Staff_<Style>`, of which the game shows exactly one;
+`ArmPivot` is the arm the game raises to cast, and `OrbAnchor` under it is where the glow and
+every projectile start. Rename any of these and the model still loads, silently wrong.
+
 ## Building the Android app locally
 
 The toolchain is installed but not on PATH, so export these first. JAVA_HOME must point at 21:

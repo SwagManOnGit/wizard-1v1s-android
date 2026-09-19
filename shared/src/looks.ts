@@ -10,8 +10,36 @@ export type StaffStyle = typeof STAFF_STYLES[number];
 
 export interface WizardLook {
   robe: string; hat: string; trim: string; skin: string;
+  /** The beard and the boots. The beard is the player's own choice; the boots follow the shoes. */
+  beardColor: string; boots: string;
   hatStyle: HatStyle; staffStyle: StaffStyle; beard: boolean; cape: boolean;
 }
+
+/** Skin tones and beard colours offered in settings. Names are what the picker shows. */
+export const SKIN_TONES: { id: string; name: string; color: string }[] = [
+  { id: 'porcelain', name: 'Porcelain', color: '#f2d9c4' },
+  { id: 'fair', name: 'Fair', color: '#e8c39e' },
+  { id: 'olive', name: 'Olive', color: '#c9a077' },
+  { id: 'tan', name: 'Tan', color: '#b07d4f' },
+  { id: 'bronze', name: 'Bronze', color: '#8a5a36' },
+  { id: 'deep', name: 'Deep', color: '#5e3a24' },
+  { id: 'ash', name: 'Ashen', color: '#b9b4c8' },
+  { id: 'verdant', name: 'Verdant', color: '#86a86a' },
+];
+
+export const BEARD_COLORS: { id: string; name: string; color: string }[] = [
+  { id: 'snow', name: 'Snow', color: '#efeeea' },
+  { id: 'silver', name: 'Silver', color: '#c4c2cf' },
+  { id: 'slate', name: 'Slate', color: '#7d7a8c' },
+  { id: 'soot', name: 'Soot', color: '#3a3646' },
+  { id: 'chestnut', name: 'Chestnut', color: '#8a5a30' },
+  { id: 'ginger', name: 'Ginger', color: '#c96a22' },
+  { id: 'gold', name: 'Gold', color: '#d9b45c' },
+  { id: 'ember', name: 'Ember', color: '#e2553a' },
+];
+
+export const DEFAULT_SKIN = SKIN_TONES[1].color;
+export const DEFAULT_BEARD = BEARD_COLORS[0].color;
 
 function hexToHsl(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);

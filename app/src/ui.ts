@@ -4,7 +4,7 @@ import { setMusic, sfx, unlockAudio } from './audio';
 import { Battle, type BattleEvent } from '@wizard/shared';
 import {
   AD_REWARD, BUYABLE_ELEMENTS, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
-  ATTUNING_RARITY, RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
+  ATTUNING_RARITY, BEARD_COLORS, RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE, SKIN_TONES,
   LISTED_SPELLS, SEASON_DAYS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, TIER_XP, UPGRADES,
   activeSetBonus, affinities, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   nextArena,
@@ -59,7 +59,14 @@ function wheelsAlpha(casts: number): number {
 /** A stable outfit for an opponent we only know by name. */
 function lookFromName(name: string): WizardLook {
   const h = [...name].reduce((s, c) => (s * 31 + c.charCodeAt(0)) >>> 0, 7);
-  return { robe: shiftColor('#c04040', (h % 10) / 10), hat: shiftColor('#802020', (h % 10) / 10), trim: '#ffd23f', skin: '#e8c39e', hatStyle: HAT_STYLES[h % HAT_STYLES.length], staffStyle: STAFF_STYLES[h % STAFF_STYLES.length], beard: h % 3 !== 0, cape: h % 2 === 0 };
+  return {
+    robe: shiftColor('#c04040', (h % 10) / 10), hat: shiftColor('#802020', (h % 10) / 10), trim: '#ffd23f',
+    skin: SKIN_TONES[h % SKIN_TONES.length].color,
+    beardColor: BEARD_COLORS[(h >>> 3) % BEARD_COLORS.length].color,
+    boots: shiftColor('#5c3a1e', ((h >>> 5) % 4) * 0.03),
+    hatStyle: HAT_STYLES[h % HAT_STYLES.length], staffStyle: STAFF_STYLES[h % STAFF_STYLES.length],
+    beard: h % 3 !== 0, cape: h % 2 === 0,
+  };
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -2529,10 +2536,44 @@ export class UI {
       body.append(grid);
     }
 
+    const look = el('div', 'pick-head');
+    look.append(uiIcon('spark', 24, '#ffcc33'), el('span', '', 'Appearance'));
+    body.append(look);
+    body.append(this.swatchRow('Skin', SKIN_TONES, () => this.save.skin, c => { this.save.skin = c; }));
+    body.append(this.swatchRow('Beard', BEARD_COLORS, () => this.save.beardColor, c => { this.save.beardColor = c; }));
+
     s.append(head, stage, body);
     body.scrollTop = scrollTop;
     this.show('gear');
     this.wizardView?.start();
+  }
+
+  /**
+   * A strip of colour swatches. Picking one repaints the model above without rebuilding the screen,
+   * which is the point of having the wizard on the same page.
+   */
+  private swatchRow(label: string, swatches: readonly { id: string; name: string; color: string }[],
+    current: () => string, set: (color: string) => void): HTMLElement {
+    const row = el('div', 'swatch-row');
+    row.append(el('div', 'swatch-label', label));
+    const strip = el('div', 'swatch-strip');
+    for (const sw of swatches) {
+      const b = el('button', `swatch ${current() === sw.color ? 'on' : ''}`);
+      b.style.background = sw.color;
+      b.title = sw.name;
+      b.setAttribute('aria-label', `${label}: ${sw.name}`);
+      b.addEventListener('click', () => {
+        sfx.click();
+        set(sw.color);
+        this.commit();
+        this.wizardView?.setLook(playerLook(this.save));
+        for (const other of strip.children) other.classList.remove('on');
+        b.classList.add('on');
+      });
+      strip.append(b);
+    }
+    row.append(strip);
+    return row;
   }
 
   /** A collection tile: art, name, rarity, and the stat line it is really chosen for. */

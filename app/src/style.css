@@ -115,6 +115,17 @@ canvas { image-rendering: pixelated; }
 .award-mark.locked canvas { filter: grayscale(1) brightness(0.5); }
 .award-tick { position: absolute; right: -6px; bottom: -6px; font-size: 18px; color: var(--gold); text-shadow: 1px 1px 0 var(--ink); }
 
+/* Skin and beard: the two things about the wizard that no drop decides. */
+.swatch-row { margin-bottom: 8px; }
+.swatch-label { font-size: 18px; letter-spacing: 1px; color: var(--muted); margin-bottom: 4px; }
+.swatch-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch {
+  width: 46px; height: 46px; padding: 0; flex: none;
+  border: 3px solid var(--ink); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 rgba(255,255,255,0.35);
+}
+.swatch:active { transform: translateY(2px); }
+.swatch.on { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold2), inset -3px -3px 0 rgba(0,0,0,0.35); }
+
 .card-head { display: flex; align-items: center; gap: 10px; }
 .card-head canvas { flex: none; }
 .card-head-words { flex: 1; min-width: 0; }

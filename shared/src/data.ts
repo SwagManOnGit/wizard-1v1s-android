@@ -1,7 +1,7 @@
 // Enemies, the level curve, upgrades and the economy. Spells live in spells.ts, gear in
 // equipment.ts, elements in elements.ts and drops in loot.ts.
 import { ELEMENT_BY_ID, type ElementId } from './elements';
-import { HAT_STYLES, STAFF_STYLES, shiftColor, type HatStyle, type StaffStyle, type WizardLook } from './looks';
+import { BEARD_COLORS, DEFAULT_BEARD, DEFAULT_SKIN, HAT_STYLES, STAFF_STYLES, shiftColor, type HatStyle, type StaffStyle, type WizardLook } from './looks';
 
 export const LANES = 3;
 export const MAX_LEVEL = 500;
@@ -133,6 +133,8 @@ export function enemyLook(def: EnemyDef): WizardLook {
     hat: shiftColor(t.hat, hue + (L % 2 ? 0.04 : -0.04), light),
     trim: def.boss ? '#ffd23f' : TRIMS[(L * 3) % TRIMS.length],
     skin: SKINS[(L * 5 + Math.floor(L / 6)) % SKINS.length],
+    beardColor: BEARD_COLORS[(L * 11 + Math.floor(L / 4)) % BEARD_COLORS.length].color,
+    boots: shiftColor('#5c3a1e', ((L * 17) % 4) * 0.03, ((L * 7) % 3) * 0.04 - 0.04),
     hatStyle,
     staffStyle: STAFF_STYLES[(L * 5 + 2) % STAFF_STYLES.length],
     beard: L % 3 !== 1,
@@ -141,10 +143,25 @@ export function enemyLook(def: EnemyDef): WizardLook {
 }
 
 /** The hero's base colours; the equipped gear recolours these by element. */
-export const PLAYER_LOOK: WizardLook = { robe: '#4a4fd0', hat: '#2e2fa8', trim: '#ffd23f', skin: '#e8c39e', hatStyle: 'pointy', staffStyle: 'claw', beard: true, cape: true };
+export const PLAYER_LOOK: WizardLook = {
+  robe: '#4a4fd0', hat: '#2e2fa8', trim: '#ffd23f', skin: DEFAULT_SKIN,
+  beardColor: DEFAULT_BEARD, boots: '#5c3a1e',
+  hatStyle: 'pointy', staffStyle: 'claw', beard: true, cape: true,
+};
+
+/** The two things about the hero that gear does not decide. */
+export interface WizardTint { skin?: string; beardColor?: string }
 
 /** Dresses the hero from the elements they are wearing. */
-export function playerLookFrom(outfitElement: ElementId | null, hatElement: ElementId | null, hatStyle: HatStyle, staffElement: ElementId | null, staffStyle: StaffStyle = 'claw'): WizardLook {
+export function playerLookFrom(
+  outfitElement: ElementId | null,
+  hatElement: ElementId | null,
+  hatStyle: HatStyle,
+  staffElement: ElementId | null,
+  staffStyle: StaffStyle = 'claw',
+  shoesElement: ElementId | null = null,
+  tint: WizardTint = {},
+): WizardLook {
   const robe = outfitElement ? ELEMENT_BY_ID[outfitElement].color : PLAYER_LOOK.robe;
   const hat = hatElement ? ELEMENT_BY_ID[hatElement].color : PLAYER_LOOK.hat;
   return {
@@ -152,6 +169,10 @@ export function playerLookFrom(outfitElement: ElementId | null, hatElement: Elem
     robe: shiftColor(robe, 0, -0.18),
     hat: shiftColor(hat, 0, -0.26),
     trim: staffElement ? ELEMENT_BY_ID[staffElement].color : PLAYER_LOOK.trim,
+    // Boots are leather whatever the element; the element only tints them, or they stay brown.
+    boots: shoesElement ? shiftColor(ELEMENT_BY_ID[shoesElement].color, 0, -0.42) : PLAYER_LOOK.boots,
+    skin: tint.skin ?? PLAYER_LOOK.skin,
+    beardColor: tint.beardColor ?? PLAYER_LOOK.beardColor,
     hatStyle,
     staffStyle,
   };

@@ -64,7 +64,16 @@ export function playerLook(save: SaveData): WizardLook {
   const hat = save.equipped.hat ? EQUIP_BY_ID[save.equipped.hat] : undefined;
   const outfit = save.equipped.outfit ? EQUIP_BY_ID[save.equipped.outfit] : undefined;
   const staff = save.equipped.staff ? EQUIP_BY_ID[save.equipped.staff] : undefined;
-  return playerLookFrom(outfit?.element ?? null, hat?.element ?? null, hat?.hatStyle ?? PLAYER_LOOK.hatStyle, staff?.element ?? null, staff?.staffStyle ?? PLAYER_LOOK.staffStyle);
+  const shoes = save.equipped.shoes ? EQUIP_BY_ID[save.equipped.shoes] : undefined;
+  return playerLookFrom(
+    outfit?.element ?? null,
+    hat?.element ?? null,
+    hat?.hatStyle ?? PLAYER_LOOK.hatStyle,
+    staff?.element ?? null,
+    staff?.staffStyle ?? PLAYER_LOOK.staffStyle,
+    shoes?.element ?? null,
+    { skin: save.skin, beardColor: save.beardColor },
+  );
 }
 
 /** Short "2 of 4 Fire" style summary of the worn set, for the gear header. */

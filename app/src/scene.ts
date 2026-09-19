@@ -222,7 +222,8 @@ class Wizard {
     this.capeNode = inst.getObjectByName('Cape') ?? null;
     this.orbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: col(look.trim), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 }));
     this.orbGlow.scale.set(1, 1, 1);
-    if (orbNode) { orbNode.add(this.orb, this.orbGlow); }
+    const anchor = inst.getObjectByName('OrbAnchor') ?? orbNode;
+    if (anchor) { anchor.add(this.orb, this.orbGlow); }
     this.body.add(inst);
     this.setLook(look);
   }
@@ -251,6 +252,8 @@ class Wizard {
     this.mats.Hat?.color.set(look.hat);
     this.mats.Trim?.color.set(look.trim);
     this.mats.Skin?.color.set(look.skin);
+    this.mats.Beard?.color.set(look.beardColor);
+    this.mats.Boots?.color.set(look.boots);
     this.orbMat.color.set(look.trim);
     (this.orbGlow.material as THREE.SpriteMaterial).color.set(look.trim);
     for (const [style, node] of Object.entries(this.hatNodes) as [HatStyle, THREE.Object3D][]) node.visible = style === look.hatStyle || (!this.hatNodes[look.hatStyle] && style === 'pointy');
@@ -430,8 +433,8 @@ export class WizardView {
     this.camera.aspect = w / h;
     // Pull back on a narrow box so the hat and the staff stay inside it.
     const back = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 2.2 : 0;
-    this.camera.position.set(0, 2.05, 5.2 + back);
-    this.camera.lookAt(0, 1.45, 0);
+    this.camera.position.set(0, 2.20, 6.4 + back);
+    this.camera.lookAt(0, 1.55, 0);
     this.camera.updateProjectionMatrix();
   }
 

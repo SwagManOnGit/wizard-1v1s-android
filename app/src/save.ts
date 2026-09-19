@@ -1,7 +1,8 @@
 // Persistent progress. Parsed defensively so older saves keep loading.
 // v3 replaced bought spells and bought gear with discovered spells and dropped gear.
 import {
-  EQUIP_BY_ID, EQUIP_SLOTS, MUNDANE_ELEMENTS, SPELL_BY_ID, STARTING_ELEMENTS, STARTING_EQUIPMENT, STARTING_SPELLS, UPGRADES,
+  BEARD_COLORS, DEFAULT_BEARD, DEFAULT_SKIN, EQUIP_BY_ID, EQUIP_SLOTS, MUNDANE_ELEMENTS, SKIN_TONES, SPELL_BY_ID,
+  STARTING_ELEMENTS, STARTING_EQUIPMENT, STARTING_SPELLS, UPGRADES,
   computeStats, type ElementId, type EquipSlot, type PlayerStats,
 } from '@wizard/shared';
 
@@ -57,6 +58,9 @@ export interface SaveData {
   adsWatched: number;
   deviceId: string;
   name: string;
+  /** The two parts of the wizard the player picks rather than earns. Stored as hex. */
+  skin: string;
+  beardColor: string;
   settings: Settings;
   daily: DailyState;
   quests: QuestState;
@@ -89,6 +93,7 @@ export function defaultSave(): SaveData {
     equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
     wins: 0, losses: 0, earned: 0, adsWatched: 0,
     deviceId: newDeviceId(), name: randomName(),
+    skin: DEFAULT_SKIN, beardColor: DEFAULT_BEARD,
     settings: { music: true, sfx: true, haptics: true, notifications: true, analytics: true },
     daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false, graceMonth: '' },
     quests: { date: '', base: {}, claimed: false },
@@ -161,6 +166,10 @@ export function parseSave(raw: string | null): SaveData {
     d.wins = int(o.wins, 0); d.losses = int(o.losses, 0); d.earned = int(o.earned, 0); d.adsWatched = int(o.adsWatched, 0);
     d.deviceId = str(o.deviceId, d.deviceId) || d.deviceId;
     d.name = str(o.name, d.name).slice(0, 16) || d.name;
+    // Only the offered swatches are accepted: a hand-edited save cannot put an arbitrary colour on
+    // a wizard that other players see in duels and on ghosts.
+    d.skin = SKIN_TONES.some(t => t.color === o.skin) ? String(o.skin) : d.skin;
+    d.beardColor = BEARD_COLORS.some(t => t.color === o.beardColor) ? String(o.beardColor) : d.beardColor;
     const st = obj(o.settings);
     d.settings = { music: bool(st.music, true), sfx: bool(st.sfx, true), haptics: bool(st.haptics, true), notifications: bool(st.notifications, true), analytics: bool(st.analytics, true) };
     const dl = obj(o.daily);
