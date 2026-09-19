@@ -103,6 +103,213 @@ const UPGRADE: Record<string, Painter> = {
   },
 };
 
+// ---- general UI emblems -----------------------------------------------------------------
+// Most screens were words on a card. These are the small pictures that go next to them: one
+// painter per idea, all at ICON_PX so they scale crisply like everything else.
+
+export type UiIconName =
+  | 'sword' | 'swords' | 'boot' | 'skull' | 'gem' | 'chest' | 'eye' | 'heart' | 'coin'
+  | 'trophy' | 'medal' | 'target' | 'scroll' | 'hourglass' | 'flame' | 'ribbon' | 'spark' | 'book';
+
+const UI: Record<UiIconName, Painter> = {
+  sword(g, s) {
+    // A long, narrow blade. The first pass was 32% of the box wide and only half of it tall, which
+    // at 20px read as a chess piece rather than a sword.
+    g.fillStyle = '#d8dce8';
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.04); g.lineTo(s * 0.62, s * 0.22); g.lineTo(s * 0.62, s * 0.62);
+    g.lineTo(s * 0.38, s * 0.62); g.lineTo(s * 0.38, s * 0.22); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillRect(s * 0.44, s * 0.16, s * 0.06, s * 0.44);
+    g.fillStyle = '#ffcc33'; g.fillRect(s * 0.14, s * 0.62, s * 0.72, s * 0.1);
+    g.fillStyle = '#8a5a2a'; g.fillRect(s * 0.43, s * 0.72, s * 0.14, s * 0.16);
+    g.fillStyle = '#ffcc33'; g.fillRect(s * 0.37, s * 0.88, s * 0.26, s * 0.08);
+  },
+  swords(g, s) {
+    g.strokeStyle = '#d8dce8'; g.lineWidth = s * 0.13; g.lineCap = 'butt';
+    g.beginPath(); g.moveTo(s * 0.22, s * 0.86); g.lineTo(s * 0.8, s * 0.14); g.stroke();
+    g.beginPath(); g.moveTo(s * 0.78, s * 0.86); g.lineTo(s * 0.2, s * 0.14); g.stroke();
+    // Brass guards and pommels, so the blades read as swords rather than as a cross.
+    g.fillStyle = '#ffcc33';
+    g.fillRect(s * 0.08, s * 0.64, s * 0.3, s * 0.1); g.fillRect(s * 0.62, s * 0.64, s * 0.3, s * 0.1);
+    g.fillRect(s * 0.12, s * 0.82, s * 0.16, s * 0.1); g.fillRect(s * 0.72, s * 0.82, s * 0.16, s * 0.1);
+  },
+  boot(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.3, s * 0.16); g.lineTo(s * 0.54, s * 0.16); g.lineTo(s * 0.54, s * 0.56);
+    g.lineTo(s * 0.84, s * 0.68); g.lineTo(s * 0.84, s * 0.82); g.lineTo(s * 0.22, s * 0.82); g.lineTo(s * 0.22, s * 0.3);
+    g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(s * 0.3, s * 0.2, s * 0.22, s * 0.08);
+    g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(s * 0.22, s * 0.74, s * 0.62, s * 0.08);
+  },
+  skull(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.arc(s * 0.5, s * 0.44, s * 0.28, Math.PI, 0); g.lineTo(s * 0.78, s * 0.62);
+    g.lineTo(s * 0.22, s * 0.62); g.closePath(); g.fill();
+    g.fillRect(s * 0.34, s * 0.62, s * 0.32, s * 0.16);
+    g.fillStyle = '#1a1030';
+    g.fillRect(s * 0.34, s * 0.38, s * 0.12, s * 0.14); g.fillRect(s * 0.54, s * 0.38, s * 0.12, s * 0.14);
+    g.fillRect(s * 0.46, s * 0.62, s * 0.08, s * 0.16);
+  },
+  gem(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.12); g.lineTo(s * 0.86, s * 0.42); g.lineTo(s * 0.5, s * 0.88);
+    g.lineTo(s * 0.14, s * 0.42); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.12); g.lineTo(s * 0.68, s * 0.42); g.lineTo(s * 0.5, s * 0.5); g.closePath(); g.fill();
+  },
+  chest(g, s, c) {
+    g.fillStyle = '#8a5a2a'; g.fillRect(s * 0.14, s * 0.4, s * 0.72, s * 0.42);
+    g.beginPath(); g.arc(s * 0.5, s * 0.4, s * 0.36, Math.PI, 0); g.fill();
+    g.fillStyle = c; g.fillRect(s * 0.14, s * 0.52, s * 0.72, s * 0.08);
+    g.fillStyle = '#ffd23f'; g.fillRect(s * 0.44, s * 0.44, s * 0.12, s * 0.22);
+    g.fillStyle = '#1a1030'; g.fillRect(s * 0.47, s * 0.52, s * 0.06, s * 0.08);
+  },
+  eye(g, s, c) {
+    g.fillStyle = '#efe8ff';
+    g.beginPath(); g.ellipse(s * 0.5, s * 0.5, s * 0.36, s * 0.22, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = c; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.16, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#1a1030'; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.07, 0, Math.PI * 2); g.fill();
+  },
+  heart(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.84);
+    g.bezierCurveTo(s * 0.02, s * 0.5, s * 0.22, s * 0.1, s * 0.5, s * 0.34);
+    g.bezierCurveTo(s * 0.78, s * 0.1, s * 0.98, s * 0.5, s * 0.5, s * 0.84);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(s * 0.3, s * 0.3, s * 0.1, s * 0.1);
+  },
+  coin(g, s, c) {
+    g.fillStyle = c; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.34, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.22, 0, Math.PI * 2); g.fill();
+    g.fillStyle = c; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.16, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillRect(s * 0.3, s * 0.26, s * 0.1, s * 0.08);
+  },
+  trophy(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.26, s * 0.14); g.lineTo(s * 0.74, s * 0.14); g.lineTo(s * 0.64, s * 0.54);
+    g.lineTo(s * 0.36, s * 0.54); g.closePath(); g.fill();
+    g.fillRect(s * 0.44, s * 0.54, s * 0.12, s * 0.16); g.fillRect(s * 0.3, s * 0.7, s * 0.4, s * 0.12);
+    stroke(g, c, s * 0.07);
+    g.beginPath(); g.moveTo(s * 0.26, s * 0.2); g.lineTo(s * 0.12, s * 0.3); g.lineTo(s * 0.22, s * 0.44); g.stroke();
+    g.beginPath(); g.moveTo(s * 0.74, s * 0.2); g.lineTo(s * 0.88, s * 0.3); g.lineTo(s * 0.78, s * 0.44); g.stroke();
+  },
+  medal(g, s, c) {
+    g.fillStyle = '#6ea8ff';
+    g.beginPath(); g.moveTo(s * 0.3, s * 0.1); g.lineTo(s * 0.46, s * 0.1); g.lineTo(s * 0.5, s * 0.42); g.lineTo(s * 0.36, s * 0.42); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(s * 0.7, s * 0.1); g.lineTo(s * 0.54, s * 0.1); g.lineTo(s * 0.5, s * 0.42); g.lineTo(s * 0.64, s * 0.42); g.closePath(); g.fill();
+    g.fillStyle = c; g.beginPath(); g.arc(s * 0.5, s * 0.62, s * 0.26, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.35)'; star(g, s * 0.5, s * 0.62, s * 0.14, 5); g.fill();
+  },
+  target(g, s, c) {
+    stroke(g, c, s * 0.09);
+    g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.34, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.18, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = c; g.beginPath(); g.arc(s * 0.5, s * 0.5, s * 0.07, 0, Math.PI * 2); g.fill();
+  },
+  scroll(g, s, c) {
+    g.fillStyle = '#e8dcb8'; g.fillRect(s * 0.22, s * 0.16, s * 0.56, s * 0.68);
+    g.fillStyle = c; g.fillRect(s * 0.16, s * 0.12, s * 0.68, s * 0.1); g.fillRect(s * 0.16, s * 0.78, s * 0.68, s * 0.1);
+    g.fillStyle = 'rgba(0,0,0,0.45)';
+    for (let i = 0; i < 3; i++) g.fillRect(s * 0.3, s * 0.32 + i * s * 0.14, s * 0.4, s * 0.06);
+  },
+  hourglass(g, s, c) {
+    g.fillStyle = c; g.fillRect(s * 0.2, s * 0.1, s * 0.6, s * 0.1); g.fillRect(s * 0.2, s * 0.8, s * 0.6, s * 0.1);
+    g.beginPath(); g.moveTo(s * 0.26, s * 0.2); g.lineTo(s * 0.74, s * 0.2); g.lineTo(s * 0.52, s * 0.5);
+    g.lineTo(s * 0.74, s * 0.8); g.lineTo(s * 0.26, s * 0.8); g.lineTo(s * 0.48, s * 0.5); g.closePath(); g.fill();
+    g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(s * 0.34, s * 0.7); g.lineTo(s * 0.66, s * 0.7); g.lineTo(s * 0.5, s * 0.54); g.closePath(); g.fill();
+  },
+  flame(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.08);
+    g.quadraticCurveTo(s * 0.86, s * 0.46, s * 0.66, s * 0.72);
+    g.quadraticCurveTo(s * 0.58, s * 0.88, s * 0.34, s * 0.8);
+    g.quadraticCurveTo(s * 0.12, s * 0.6, s * 0.5, s * 0.08);
+    g.fill();
+    g.fillStyle = '#ffe066';
+    g.beginPath(); g.moveTo(s * 0.52, s * 0.42); g.quadraticCurveTo(s * 0.68, s * 0.64, s * 0.5, s * 0.78);
+    g.quadraticCurveTo(s * 0.36, s * 0.64, s * 0.52, s * 0.42); g.fill();
+  },
+  ribbon(g, s, c) {
+    g.fillStyle = c; g.fillRect(s * 0.22, s * 0.14, s * 0.56, s * 0.42);
+    g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(s * 0.22, s * 0.44, s * 0.56, s * 0.12);
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.22, s * 0.56); g.lineTo(s * 0.5, s * 0.72); g.lineTo(s * 0.78, s * 0.56);
+    g.lineTo(s * 0.78, s * 0.9); g.lineTo(s * 0.5, s * 0.76); g.lineTo(s * 0.22, s * 0.9); g.closePath(); g.fill();
+    g.fillStyle = '#fff6dc'; star(g, s * 0.5, s * 0.32, s * 0.14, 5); g.fill();
+  },
+  spark(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.moveTo(s * 0.6, s * 0.06); g.lineTo(s * 0.32, s * 0.5); g.lineTo(s * 0.5, s * 0.5);
+    g.lineTo(s * 0.38, s * 0.94); g.lineTo(s * 0.7, s * 0.44); g.lineTo(s * 0.5, s * 0.44); g.closePath(); g.fill();
+  },
+  book(g, s, c) {
+    g.fillStyle = c; g.fillRect(s * 0.14, s * 0.14, s * 0.72, s * 0.72);
+    g.fillStyle = '#e8dcb8'; g.fillRect(s * 0.22, s * 0.2, s * 0.56, s * 0.6);
+    g.fillStyle = c; g.fillRect(s * 0.46, s * 0.14, s * 0.08, s * 0.72);
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    g.fillRect(s * 0.27, s * 0.3, s * 0.15, s * 0.05); g.fillRect(s * 0.27, s * 0.42, s * 0.15, s * 0.05);
+    g.fillRect(s * 0.58, s * 0.3, s * 0.15, s * 0.05); g.fillRect(s * 0.58, s * 0.42, s * 0.15, s * 0.05);
+  },
+};
+
+export function uiIcon(name: UiIconName, size = 24, tint = '#ffd23f'): HTMLCanvasElement {
+  return makePixelCanvas(ICON_PX, size, g => UI[name](g, ICON_PX, tint));
+}
+
+/** Quest metrics to the picture that says what the quest is about. */
+export function questIcon(metric: string, size = 24): HTMLCanvasElement {
+  const map: Record<string, [UiIconName, string]> = {
+    wins: ['sword', '#ff9a9a'],
+    casts: ['spark', '#ffe066'],
+    dodges: ['boot', '#8ef3ff'],
+    bossWins: ['skull', '#d0a0ff'],
+    duelWins: ['swords', '#ff8f8f'],
+    discovered: ['eye', '#7dff9b'],
+    chests: ['chest', '#ffd23f'],
+    drops: ['gem', '#6fd67a'],
+  };
+  const [name, tint] = map[metric] ?? ['scroll', '#ffd23f'];
+  return uiIcon(name, size, tint);
+}
+
+/** Season reward kinds to a picture, so a tier row reads before it is read. */
+export function rewardIcon(kind: string, size = 24): HTMLCanvasElement {
+  if (kind === 'chest') return uiIcon('chest', size, '#ffd23f');
+  if (kind === 'title') return uiIcon('ribbon', size, '#ff4fd8');
+  return uiIcon('coin', size, '#ffcc33');
+}
+
+/**
+ * The shopkeeper. Drawn at twice the usual size because he is the only picture on the screen that
+ * is meant to be looked at rather than glanced at.
+ */
+export const PORTRAIT_PX = 48;
+export function wizardPortrait(size = 96): HTMLCanvasElement {
+  return makePixelCanvas(PORTRAIT_PX, size, g => {
+    const s = PORTRAIT_PX;
+    // Staff, behind everything.
+    g.fillStyle = '#8a5a2a'; g.fillRect(s * 0.78, s * 0.22, s * 0.05, s * 0.72);
+    g.fillStyle = '#7dff9b'; g.beginPath(); g.arc(s * 0.805, s * 0.2, s * 0.07, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(125,255,155,0.45)'; g.beginPath(); g.arc(s * 0.805, s * 0.2, s * 0.11, 0, Math.PI * 2); g.fill();
+    // Robe.
+    g.fillStyle = '#4a4fd0';
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.46); g.lineTo(s * 0.24, s * 0.62); g.lineTo(s * 0.2, s * 0.96);
+    g.lineTo(s * 0.8, s * 0.96); g.lineTo(s * 0.76, s * 0.62); g.closePath(); g.fill();
+    g.fillStyle = '#2e2fa8'; g.fillRect(s * 0.46, s * 0.62, s * 0.08, s * 0.34);
+    // Face and beard.
+    g.fillStyle = '#e8c39e'; g.fillRect(s * 0.36, s * 0.3, s * 0.28, s * 0.22);
+    g.fillStyle = '#d8dce8';
+    g.beginPath(); g.moveTo(s * 0.36, s * 0.44); g.lineTo(s * 0.64, s * 0.44); g.lineTo(s * 0.56, s * 0.72);
+    g.lineTo(s * 0.44, s * 0.72); g.closePath(); g.fill();
+    g.fillStyle = '#1a1030'; g.fillRect(s * 0.41, s * 0.37, s * 0.05, s * 0.05); g.fillRect(s * 0.54, s * 0.37, s * 0.05, s * 0.05);
+    // Hat.
+    g.fillStyle = '#2e2fa8';
+    g.beginPath(); g.moveTo(s * 0.5, s * 0.02); g.lineTo(s * 0.72, s * 0.3); g.lineTo(s * 0.28, s * 0.3); g.closePath(); g.fill();
+    g.fillRect(s * 0.22, s * 0.28, s * 0.56, s * 0.07);
+    g.fillStyle = '#ffd23f'; g.fillRect(s * 0.3, s * 0.24, s * 0.4, s * 0.05);
+    star(g, s * 0.56, s * 0.14, s * 0.05, 4); g.fill();
+  });
+}
+
 export function makePixelCanvas(px: number, cssSize: number, paint: (g: CanvasRenderingContext2D) => void): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = px; c.height = px;

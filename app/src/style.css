@@ -13,6 +13,7 @@
   --win3: #3b32b8;
   --edge: #f6f2ff;
   --ink: #0a0620;
+  --nav-h: calc(74px + env(safe-area-inset-bottom, 0px));
   --gold: #ffcc33;
   --gold2: #fff0a0;
   --gold-dark: #b8862a;
@@ -93,6 +94,20 @@ canvas { image-rendering: pixelated; }
 /* 44px is the floor in Apple's guidelines and close to Material's 48; 40 was under both. */
 .btn.small { font-size: 20px; padding: 5px 12px; min-height: 44px; }
 .btn.big { font-size: 32px; padding: 12px 28px; }
+/* The ladder's column labels: same grid as a tier row, so FREE and PREMIUM line up with the chips. */
+.ladder-head { border: none; background: none; margin-bottom: 2px; }
+.ladder-head .tier-reward { justify-content: center; letter-spacing: 2px; font-size: 15px; background: none; border-style: dashed; }
+.tier-reward.head { opacity: 0.9; }
+
+.count-pill { display: inline-flex; align-items: center; gap: 8px; color: var(--gold); font-size: 26px; text-shadow: 2px 2px 0 var(--ink); }
+.count-pill canvas { flex: none; }
+
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head canvas { flex: none; }
+.card-head-words { flex: 1; min-width: 0; }
+.big-coins { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+.btn.has-icon canvas { flex: none; }
 
 /* ---------- splash ---------- */
 #splash { align-items: center; justify-content: center; background: #0a0620; }
@@ -141,6 +156,10 @@ canvas { image-rendering: pixelated; }
 .level-info { flex: none; padding: 10px 14px; background: var(--win); border-top: 3px solid var(--ink); font-size: 22px; box-shadow: inset 0 3px 0 var(--win3); }
 .level-info b { color: var(--gold); }
 .level-info small { display: block; color: var(--muted); font-size: 18px; }
+.level-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.level-stat { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 19px; line-height: 1;
+  background: var(--win2); border: 2px solid var(--ink); box-shadow: inset 2px 2px 0 var(--win3); }
+.level-stat canvas { flex: none; }
 
 /* ---------- battle ---------- */
 #battle { background: #000; }
@@ -319,7 +338,7 @@ canvas { image-rendering: pixelated; }
 @keyframes freshChip { 50% { background: var(--gold); box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--gold2); } }
 
 /* ---------- Clash-style tab bar ---------- */
-.nav { position: absolute; left: 0; right: 0; bottom: 0; height: 74px; display: flex; align-items: stretch; z-index: 30;
+.nav { position: absolute; left: 0; right: 0; bottom: 0; height: var(--nav-h); padding-bottom: env(safe-area-inset-bottom, 0px); display: flex; align-items: stretch; z-index: 30;
   background: linear-gradient(180deg, var(--win2), var(--win)); border-top: 4px solid var(--edge); box-shadow: 0 -4px 0 var(--ink); }
 .nav.hidden { display: none; }
 .nav-tab { position: relative; flex: 1; border: none; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -341,7 +360,7 @@ canvas { image-rendering: pixelated; }
 @keyframes badgePop { 50% { transform: scale(1.12); } }
 /* Screens sit above the bar. */
 #menu.active, #shop.active, #gear.active, #spellbook.active, #market.active, #duel.active,
-#ranks.active, #achievements.active, #settings.active { bottom: 74px; }
+#ranks.active, #achievements.active, #settings.active { bottom: var(--nav-h); }
 
 /* ---------- battle hub ---------- */
 #menu { padding: 0; }
@@ -389,12 +408,43 @@ canvas { image-rendering: pixelated; }
 .discovery-rank { text-align: center; font-size: 18px; letter-spacing: 1px; }
 .rarity-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; font-size: 15px; color: var(--muted); }
 .card.rumour { border-color: var(--magenta); }
-.rumour-head { font-size: 18px; letter-spacing: 2px; color: var(--magenta); }
+.rumour-head { display: flex; align-items: center; gap: 8px; font-size: 18px; letter-spacing: 2px; color: var(--magenta); }
 .rumour-text { font-size: 22px; color: var(--text); font-style: italic; margin: 2px 0; }
 
 .duel-code { font-size: 48px; letter-spacing: 8px; color: var(--gold); text-shadow: 3px 3px 0 var(--ink); text-align: center; padding: 6px 0; }
 .code-input { text-align: center; letter-spacing: 6px; text-transform: uppercase; }
 .code-input.bad { border-color: var(--red); }
+
+/* ---------- the shop, as a room rather than a list ---------- */
+/* Planks, cut by darker seams. Two gradients: the grain, then the boards. */
+#shop.woodshop {
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.13) 0 2px, rgba(255,255,255,0.04) 2px 5px, rgba(0,0,0,0) 5px 11px),
+    repeating-linear-gradient(180deg, #5b3a1c 0 26px, #4a2e14 26px 28px, #6a4522 28px 54px, #3e2610 54px 56px);
+}
+.woodshop .shop-head { background: linear-gradient(180deg, #7a4f26, #52321a); border-bottom: 4px solid #2a1808; box-shadow: 0 4px 0 rgba(0,0,0,0.5); }
+.woodshop .shop-body { background: transparent; border-top-color: #2a1808; box-shadow: inset 0 3px 0 rgba(255,220,160,0.12); }
+.woodshop .card, .woodshop .row-card {
+  background: linear-gradient(180deg, rgba(38,22,10,0.92), rgba(24,14,6,0.94));
+  border-color: #2a1808; box-shadow: inset -3px -3px 0 rgba(0,0,0,0.5), inset 3px 3px 0 rgba(255,220,160,0.14);
+}
+.woodshop .section-title { color: var(--gold2); border-bottom-color: #2a1808; }
+.woodshop .desc, .woodshop .note, .woodshop .section-title small, .woodshop .muted { color: #e6cfa8; }
+
+/* The counter: somebody behind it, and a line of patter. */
+.shopkeeper { flex: none; display: flex; align-items: flex-end; gap: 10px; padding: 6px 12px 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.28), rgba(0,0,0,0)); }
+.shopkeeper canvas { flex: none; filter: drop-shadow(3px 3px 0 rgba(0,0,0,0.55)); }
+.shop-speech { flex: 1; min-width: 0; margin-bottom: 8px; padding: 6px 10px;
+  background: #e8dcb8; color: #3a2410; border: 3px solid #2a1808; box-shadow: 3px 3px 0 rgba(0,0,0,0.45); }
+.shop-name { font-size: 16px; letter-spacing: 2px; color: #7a4f26; }
+.shop-line { font-size: 19px; line-height: 1.15; }
+
+.woodshop .tabs { background: transparent; }
+.woodshop .tab { background: linear-gradient(180deg, #6a4522, #4a2e14); color: var(--gold2); border-color: #2a1808;
+  box-shadow: inset 3px 3px 0 rgba(255,220,160,0.16); display: flex; align-items: center; justify-content: center; gap: 5px; }
+.woodshop .tab.active { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #3a2410; }
+.shop-tabs .tab span { line-height: 1; }
 
 /* ---------- season ---------- */
 .season-bar { margin-top: 6px; }
@@ -408,7 +458,9 @@ canvas { image-rendering: pixelated; }
 .season-tier.taken .tier-reward { filter: grayscale(0.7); }
 .tier-no { flex: none; width: 34px; text-align: center; font-size: 20px; color: var(--gold); }
 .tier-tracks { flex: 1; display: flex; gap: 6px; min-width: 0; }
-.tier-reward { flex: 1; min-width: 0; padding: 3px 6px; font-size: 15px; background: var(--win); border: 2px solid var(--win3); }
+.tier-reward { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 6px; font-size: 15px; background: var(--win); border: 2px solid var(--win3); }
+.tier-reward canvas { flex: none; }
+.tier-reward span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tier-reward.premium { border-color: var(--gold-dark); color: var(--gold2); }
 .tier-reward.locked { opacity: 0.5; }
 .worn-title { font-size: 16px; color: var(--magenta); font-style: italic; }

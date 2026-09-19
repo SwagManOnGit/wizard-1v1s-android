@@ -14,7 +14,7 @@ import {
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, pointAlong, spellStroke as strokeOf, type Point } from '@wizard/shared';
-import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
+import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, questIcon, rewardIcon, slotIcon, uiIcon, upgradeIcon, wizardPortrait, type UiIconName } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
@@ -463,7 +463,7 @@ export class UI {
     // One line, always, saying what to do next.
     const goal = this.nextGoal();
     const goalStrip = el('button', 'goal-strip');
-    goalStrip.innerHTML = `<i>NEXT</i><span>${goal.text}</span><em>›</em>`;
+    goalStrip.append(uiIcon('spark', 20, '#ffcc33'), el('i', '', 'NEXT'), el('span', '', goal.text), el('em', '', '›'));
     goalStrip.addEventListener('click', () => { unlockAudio(); sfx.click(); goal.go(); });
 
     const body = el('div', 'hub-body');
@@ -475,11 +475,14 @@ export class UI {
     const quests = questsToday(this.save);
     const qCard = el('div', 'card quests');
     const qHead = el('div', 'quest-head');
-    qHead.append(el('b', '', 'DAILY QUESTS'),
+    const qTitle = el('b', 'with-icon');
+    qTitle.append(uiIcon('scroll', 22, '#ffcc33'), document.createTextNode('DAILY QUESTS'));
+    qHead.append(qTitle,
       el('small', '', this.save.quests.claimed ? 'Reward claimed' : `All three: a ${chest.name}`));
     qCard.append(qHead);
     for (const q of quests) {
       const row = el('div', `quest ${q.done ? 'done' : ''}`);
+      row.append(questIcon(q.def.metric, 26));
       const txt = el('div', 'quest-txt');
       txt.append(el('div', 'name', q.def.name), el('div', 'desc', q.def.desc));
       const bar = el('div', 'quest-bar');
@@ -495,6 +498,7 @@ export class UI {
     // Daily challenge sits at the top: one modified fight a day for triple coins.
     const ch = dailyChallenge(this.save);
     const chCard = el('div', 'card challenge');
+    chCard.append(uiIcon('flame', 34, '#ff8a2a'));
     const chInfo = el('div');
     chInfo.append(el('div', 'name', ch.name), el('div', 'desc', `${ch.desc} Level ${ch.level}: ${ch.enemy.name}. Triple coins.`));
     chCard.append(chInfo);
@@ -540,7 +544,16 @@ export class UI {
     const renderInfo = (): void => {
       const e = enemyForLevel(this.pickedLevel);
       const cleared = this.pickedLevel <= this.save.best;
-      info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span><small>${fmt(e.hp)} HP · ${e.damage} dmg per hit · ${cleared ? `cleared, replay pays ${fmt(Math.round(e.coins * 0.6))}` : `${fmt(e.coins)} coins`}</small>`;
+      info.innerHTML = `<b>Level ${this.pickedLevel}</b> <span class="${e.boss ? 'boss' : ''}">${e.boss ? 'BOSS: ' : ''}${e.name}</span>`;
+      const stats = el('div', 'level-stats');
+      const stat = (icon: Parameters<typeof uiIcon>[0], tint: string, text: string): HTMLElement => {
+        const box = el('div', 'level-stat');
+        box.append(uiIcon(icon, 20, tint), el('span', '', text));
+        return box;
+      };
+      stats.append(stat('heart', '#ff6a6a', `${fmt(e.hp)}`), stat('sword', '#d8dce8', `${e.damage}`),
+        stat('coin', '#ffcc33', cleared ? `${fmt(Math.round(e.coins * 0.6))} replay` : `${fmt(e.coins)}`));
+      info.append(stats);
       tiles.forEach((t, L) => t.classList.toggle('picked', L === this.pickedLevel));
       playBtn.textContent = `BATTLE: LEVEL ${this.pickedLevel}`;
     };
@@ -578,9 +591,17 @@ export class UI {
 
     const foot = el('div', 'hub-foot');
     const duelRow = el('div', 'menu-row');
-    duelRow.append(btn('DUEL', 'red', () => this.showDuelMenu()), btn('Training', 'green', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true)));
+    const duelBtn = btn('DUEL', 'red has-icon', () => this.showDuelMenu());
+    duelBtn.prepend(uiIcon('swords', 22, '#ffffff'));
+    const trainBtn = btn('Training', 'green has-icon', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true));
+    trainBtn.prepend(uiIcon('target', 22, '#ffffff'));
+    duelRow.append(duelBtn, trainBtn);
     const extraRow = el('div', 'menu-row');
-    extraRow.append(btn('Ranks', 'ghost small', () => this.showRanks()), btn('Awards', 'ghost small', () => this.showAchievements()));
+    const ranksBtn = btn('Ranks', 'ghost small has-icon', () => this.showRanks());
+    ranksBtn.prepend(uiIcon('trophy', 20, '#ffcc33'));
+    const awardsBtn = btn('Awards', 'ghost small has-icon', () => this.showAchievements());
+    awardsBtn.prepend(uiIcon('medal', 20, '#ffcc33'));
+    extraRow.append(ranksBtn, awardsBtn);
     foot.append(info, playBtn, duelRow, extraRow);
 
     s.append(bar, goalStrip, body, foot);
@@ -1756,12 +1777,12 @@ export class UI {
 
     const body = el('div', 'shop-body');
     const tier = tierFor(this.save.season.xp);
-    const intro = el('div', 'card');
-    intro.append(el('div', 'name', `Season of ${def.name}`),
-      el('div', 'desc', `Day ${def.day} of ${SEASON_DAYS}. Tier ${tier} of ${SEASON_TIER_COUNT}. Play anything to climb: levels, quests and duels all count.`));
+    const intro = el('div', 'card season-intro');
+    intro.append(this.cardHead('hourglass', '#ffcc33', `Season of ${def.name}`,
+      `Day ${def.day} of ${SEASON_DAYS}. Tier ${tier} of ${SEASON_TIER_COUNT}. Play anything to climb: levels, quests and duels all count.`));
     intro.append(this.seasonBar());
     if (!this.save.season.premium) {
-      const buy = btn(platform.price(CONFIG.skus.seasonPass) ?? '£4.99', 'gold', async () => {
+      const buy = btn(`UNLOCK PREMIUM · ${platform.price(CONFIG.skus.seasonPass) ?? '£4.99'}`, 'gold', async () => {
         buy.disabled = true;
         analytics.track('purchase_attempt', { sku: CONFIG.skus.seasonPass });
         const r = platform.purchasesAvailable() ? await platform.purchase(CONFIG.skus.seasonPass) : await this.showFakePurchase(CONFIG.skus.seasonPass).then(ok => ({ ok, sku: CONFIG.skus.seasonPass, message: '' }));
@@ -1777,6 +1798,17 @@ export class UI {
       body.append(btn(`CLAIM ${claimable.length} TIER${claimable.length === 1 ? '' : 'S'}`, 'gold big', () => this.claimSeasonNow()));
     }
 
+    const ladderHead = el('div', 'season-tier ladder-head');
+    ladderHead.append(el('div', 'tier-no', ''));
+    const heads = el('div', 'tier-tracks');
+    const freeHead = el('div', 'tier-reward head');
+    freeHead.append(uiIcon('coin', 20, '#ffcc33'), el('span', '', 'FREE'));
+    const premHead = el('div', `tier-reward premium head ${this.save.season.premium ? '' : 'locked'}`);
+    premHead.append(uiIcon('gem', 20, '#ff4fd8'), el('span', '', 'PREMIUM'));
+    heads.append(freeHead, premHead);
+    ladderHead.append(heads);
+    body.append(ladderHead);
+
     for (let t = 1; t <= SEASON_TIER_COUNT; t++) {
       const reached = t <= tier, taken = this.save.season.claimed.includes(t);
       const row = el('div', `season-tier ${reached ? 'reached' : ''} ${taken ? 'taken' : ''}`);
@@ -1785,9 +1817,9 @@ export class UI {
       for (const r of rewardsFor(t)) {
         const locked = r.premium && !this.save.season.premium;
         const chip = el('div', `tier-reward ${r.premium ? 'premium' : ''} ${locked ? 'locked' : ''}`);
-        chip.textContent = r.kind === 'coins' ? `${fmt(Number(r.value))} coins`
-          : r.kind === 'chest' ? chestById(String(r.value)).name
-          : `Title: "${r.value}"`;
+        chip.append(rewardIcon(r.kind, 22), el('span', '', r.kind === 'coins' ? `${fmt(Number(r.value))}`
+          : r.kind === 'chest' ? chestById(String(r.value)).name.replace(' Chest', '')
+          : `"${r.value}"`));
         tracks.append(chip);
       }
       row.append(tracks);
@@ -1866,16 +1898,56 @@ export class UI {
     this.show('shop');
   }
 
+  /**
+   * The gold-bar pill in a screen header means coins. Spells found and awards earned were borrowing
+   * it, so three screens said "4 / 72" next to a picture of money. This gives a count its own icon.
+   */
+  private countPill(icon: UiIconName, tint: string, text: string): HTMLElement {
+    const pill = el('div', 'count-pill');
+    pill.append(uiIcon(icon, 22, tint), el('span', '', text));
+    return pill;
+  }
+
+  /** Icon, title and subtitle on one line, for cards that otherwise open with a wall of words. */
+  private cardHead(icon: UiIconName, tint: string, title: string, sub?: string): HTMLElement {
+    const head = el('div', 'card-head');
+    head.append(uiIcon(icon, 34, tint));
+    const words = el('div', 'card-head-words');
+    words.append(el('div', 'name', title));
+    if (sub) words.append(el('div', 'desc', sub));
+    head.append(words);
+    return head;
+  }
+
+  /** The shopkeeper. A counter with somebody behind it reads as a shop; a list of prices does not. */
+  private shopKeeper(line: string): HTMLElement {
+    const bar = el('div', 'shopkeeper');
+    bar.append(wizardPortrait(84));
+    const speech = el('div', 'shop-speech');
+    speech.append(el('div', 'shop-name', 'MAGISTER ODWIN'), el('div', 'shop-line', line));
+    bar.append(speech);
+    return bar;
+  }
+
   private renderShop(): void {
     const s = this.screens.shop;
+    s.classList.add('woodshop');
     const scrollTop = (s.querySelector('.shop-body') as HTMLElement | null)?.scrollTop ?? 0;
     s.innerHTML = '';
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SHOP'), el('div', 'coins', fmt(this.save.coins)));
-    const tabs = el('div', 'tabs');
+    const lines: Record<ShopTab, string> = {
+      elements: 'Attune to an element and its spells start answering you.',
+      chests: 'No refunds, no promises. That is what a chest is.',
+      upgrades: 'Every rank stays with you. Spend well.',
+    };
+    const keeper = this.shopKeeper(lines[this.shopTab]);
+    const tabs = el('div', 'tabs shop-tabs');
+    const icons: Record<ShopTab, Parameters<typeof uiIcon>[0]> = { elements: 'flame', chests: 'chest', upgrades: 'gem' };
     const names: [ShopTab, string][] = [['elements', 'Elements'], ['chests', 'Chests'], ['upgrades', 'Upgrades']];
     for (const [id, label] of names) {
-      const t = el('button', `tab ${this.shopTab === id ? 'active' : ''}`, label);
+      const t = el('button', `tab ${this.shopTab === id ? 'active' : ''}`);
+      t.append(uiIcon(icons[id], 22, this.shopTab === id ? '#3a2410' : '#ffcc33'), el('span', '', label));
       t.addEventListener('click', () => { sfx.click(); this.shopTab = id; this.renderShop(); });
       tabs.append(t);
     }
@@ -1885,7 +1957,7 @@ export class UI {
       case 'upgrades': this.renderUpgrades(body); break;
       case 'chests': this.renderChests(body); break;
     }
-    s.append(head, tabs, body);
+    s.append(head, keeper, tabs, body);
     body.scrollTop = scrollTop;
   }
 
@@ -1959,8 +2031,10 @@ export class UI {
   private renderCoins(body: HTMLElement): void {
     const amount = AD_REWARD(this.save.best + 1);
     const card = el('div', 'card ad-card');
-    card.append(el('div', 'name', 'Watch an ad, earn coins'), el('div', 'big-coins', `+${fmt(amount)}`),
-      el('div', 'note', 'The reward grows with your best level.'));
+    card.append(this.cardHead('eye', '#9ad8ff', 'Watch an ad, earn coins'));
+    const big = el('div', 'big-coins');
+    big.append(uiIcon('coin', 40, '#ffcc33'), el('span', '', `+${fmt(amount)}`));
+    card.append(big, el('div', 'note', 'The reward grows with your best level.'));
     const b = btn('WATCH AD', 'gold big', async () => {
       b.disabled = true;
       const ok = await platform.showRewardedAd();
@@ -1979,7 +2053,8 @@ export class UI {
     card.append(b, el('div', 'note', `Ads watched: ${this.save.adsWatched} · Total earned: ${fmt(this.save.earned)} coins`));
     body.append(card);
     const tips = el('div', 'card');
-    tips.append(el('div', 'name', 'Other ways to earn'), el('div', 'desc', 'Replaying a cleared level pays 60% of its reward. Losing still pays 25%. Boss levels pay triple. The Lucky Coin and Chrono Amulet charms multiply everything.'));
+    tips.append(this.cardHead('coin', '#ffcc33', 'Other ways to earn'));
+    tips.append(el('div', 'desc', 'Replaying a cleared level pays 60% of its reward. Losing still pays 25%. Boss levels pay triple. The Lucky Coin and Chrono Amulet charms multiply everything.'));
     body.append(tips);
   }
 
@@ -2043,10 +2118,18 @@ export class UI {
       { sku: CONFIG.skus.noAds, name: 'Supporter pass', desc: 'Support the game. Rewarded ads stay optional and keep paying.', owned: this.save.passes.noAds, fallback: '$2.99' },
       { sku: CONFIG.skus.hatPack, name: 'Founder\'s hoard', desc: 'Seven Gold Chests, opened instantly.', fallback: '$2.99' },
     ];
+    const bankArt: Record<string, [UiIconName, string]> = {
+      [CONFIG.skus.coinsSmall]: ['coin', '#ffcc33'],
+      [CONFIG.skus.coinsLarge]: ['chest', '#ffcc33'],
+      [CONFIG.skus.doubleCoins]: ['gem', '#ffcc33'],
+      [CONFIG.skus.noAds]: ['ribbon', '#ff4fd8'],
+      [CONFIG.skus.hatPack]: ['trophy', '#ffcc33'],
+    };
     const grid = el('div', 'grid');
     for (const it of items) {
       const card = el('div', `card ${it.owned ? 'equipped' : ''}`);
-      card.append(el('div', 'name', it.name), el('div', 'desc', it.desc));
+      const art = bankArt[it.sku] ?? ['gem', '#ffcc33'] as [UiIconName, string];
+      card.append(this.cardHead(art[0], art[1], it.name), el('div', 'desc', it.desc));
       if (it.sku === CONFIG.skus.hatPack) {
         const gold = CHESTS.find(c => c.id === 'gold');
         if (gold) card.append(oddsLine(gold));
@@ -2123,7 +2206,9 @@ export class UI {
     if (!rumour) return null;
     if (this.save.rumourSeen !== rumour.week) { this.save.rumourSeen = rumour.week; this.commit(); }
     const card = el('div', 'card rumour');
-    card.append(el('div', 'rumour-head', 'THIS WEEK THEY SAY'), el('div', 'rumour-text', `"${rumour.text}"`),
+    const rHead = el('div', 'rumour-head');
+    rHead.append(uiIcon('eye', 22, '#ff4fd8'), el('span', '', 'THIS WEEK THEY SAY'));
+    card.append(rHead, el('div', 'rumour-text', `"${rumour.text}"`),
       el('div', 'note faint', 'Some spells were never written down. This is one of them.'));
     return card;
   }
@@ -2136,7 +2221,7 @@ export class UI {
     const stats = computeStats(this.save);
     const prog = discoveryProgress(this.save.discovered);
     const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SPELLBOOK'), el('div', 'coins', `${prog.found} / ${prog.total}`));
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'SPELLBOOK'), this.countPill('book', '#ffcc33', `${prog.found} / ${prog.total}`));
     const tabs = el('div', 'tabs');
     const mk = (id: SpellbookTab, label: string): void => {
       const t = el('button', `tab ${this.spellbookTab === id ? 'active' : ''}`, label);
@@ -2213,7 +2298,7 @@ export class UI {
     const stats = computeStats(this.save);
     const prog = discoveryProgress(this.save.discovered);
     const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showSpellbook('known')), el('h1', '', 'CODEX'), el('div', 'coins', `${prog.found} / ${prog.total}`));
+    head.append(btn('◀', 'small ghost', () => this.showSpellbook('known')), el('h1', '', 'CODEX'), this.countPill('book', '#ffcc33', `${prog.found} / ${prog.total}`));
 
     // Ten element names do not fit across a phone, and truncating them to "Arca" and "Eclip"
     // reads as broken. Each tab is its own emblem instead, with the count beneath it and the full
@@ -2398,8 +2483,8 @@ export class UI {
     const def = seasonFor();
     const owed = unclaimedTiers(this.save).length;
     const pass = el('div', 'card season-card');
-    pass.append(el('div', 'name', `Season of ${def.name}`),
-      el('div', 'desc', `Day ${def.day} of ${SEASON_DAYS} · tier ${tierFor(this.save.season.xp)} of ${SEASON_TIER_COUNT}${owed ? ` · ${owed} waiting` : ''}`));
+    pass.append(this.cardHead('hourglass', '#ffcc33', `Season of ${def.name}`,
+      `Day ${def.day} of ${SEASON_DAYS} · tier ${tierFor(this.save.season.xp)} of ${SEASON_TIER_COUNT}${owed ? ` · ${owed} waiting` : ''}`));
     pass.append(this.seasonBar(), btn(owed ? `OPEN THE SEASON · ${owed} TO CLAIM` : 'OPEN THE SEASON', owed ? 'gold' : 'blue', () => this.showSeason()));
     body.append(pass);
     this.renderCoins(body);
@@ -2523,7 +2608,7 @@ export class UI {
     s.innerHTML = '';
     const head = el('div', 'shop-head');
     const done = this.save.achievements.length;
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'AWARDS'), el('div', 'coins', `${done} / ${ACHIEVEMENTS.length}`));
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'AWARDS'), this.countPill('medal', '#ffcc33', `${done} / ${ACHIEVEMENTS.length}`));
     const body = el('div', 'shop-body');
     for (const a of ACHIEVEMENTS) {
       const got = this.save.achievements.includes(a.id);
