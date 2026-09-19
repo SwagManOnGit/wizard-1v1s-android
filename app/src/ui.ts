@@ -70,7 +70,7 @@ function lookFromName(name: string): WizardLook {
   };
 }
 
-type HubDrawer = 'quests' | 'challenge' | null;
+
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -792,10 +792,7 @@ export class UI {
 
   // ---------------------------------------------------------------- duels
   /** "Adept · 1043 · 57 to Magister" — a band to hold and a band to chase. */
-  private arenaLine(): string {
-    const here = arenaFor(this.save.rating), next = nextArena(this.save.rating);
-    return next ? `${here.name} · ${this.save.rating} · ${next.away} to ${next.rank.name}` : `${here.name} · ${this.save.rating}`;
-  }
+
 
   showDuelMenu(): void {
     this.stopLoop();
@@ -805,33 +802,65 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'DUELS'), el('div', 'coins', fmt(this.save.coins)));
     const body = el('div', 'shop-body');
-    const me = el('div', 'card duel-me');
     const st = this.save.stats;
+
+    // The rating card. A duel screen whose only mention of progress was the word "Adept" was
+    // hiding its own ladder: the number, the band, and how far the next one is now lead the screen.
+    const here = arenaFor(this.save.rating), next = nextArena(this.save.rating);
+    const me = el('div', 'card duel-me');
     me.append(wizardPortrait(64));
     const mine = el('div', 'duel-me-words');
-    mine.append(el('div', 'name', this.save.name), el('div', 'arena-line', this.arenaLine()));
+    mine.append(el('div', 'name', this.save.name));
+    const rank = el('div', 'arena-line');
+    rank.append(uiIcon('trophy', 22, '#ffcc33'), el('b', '', here.name), el('span', '', String(this.save.rating)));
+    mine.append(rank);
+    const ladder = el('div', 'rating-bar');
+    const fill = el('div', 'rating-fill');
+    // Across the current band, or pinned full once there is no band above.
+    const span = next ? next.rank.from - here.from : 1;
+    fill.style.width = next ? `${Math.round(Math.max(0, Math.min(1, (this.save.rating - here.from) / span)) * 100)}%` : '100%';
+    ladder.append(fill, el('span', '', next ? `${next.away} to ${next.rank.name}` : 'Top of the ladder'));
+    mine.append(ladder);
     me.append(mine);
+
     const record = el('div', 'duel-record');
     const tally = (icon: UiIconName, tint: string, text: string): HTMLElement => {
       const box = el('div', 'level-stat');
       box.append(uiIcon(icon, 20, tint), el('span', '', text));
       return box;
     };
+    const played = st.duelWins + st.duelLosses;
     record.append(tally('swords', '#ff8f8f', `${st.duelWins}W ${st.duelLosses}L`),
-      tally('ghost', '#d8dce8', `${st.ghostWins}W ${st.ghostLosses}L`));
-    mine.append(record);
-    const status = el('div', 'note', 'Checking the duel server...');
-    body.append(me, status);
-    void api.health().then(h => { status.textContent = h ? `Server online · ${h.players} wizards · ${h.ghosts} ghosts` : 'Server unreachable: online and ghost duels need a connection. Practice still works.'; });
+      tally('ghost', '#d8dce8', `${st.ghostWins}W ${st.ghostLosses}L`),
+      tally('medal', '#ffcc33', played ? `${Math.round((st.duelWins / played) * 100)}%` : '—'));
+    body.append(me, record);
 
-    const mk = (icon: UiIconName, tint: string, title: string, desc: string, label: string, cls: string, run: () => void): void => {
+    // Server status as a pill with a light on it, rather than a sentence that changes under you.
+    const status = el('div', 'server-pill waiting');
+    status.append(el('i', ''), el('span', '', 'Checking the duel server'));
+    body.append(status);
+
+    const online: HTMLButtonElement[] = [];
+    const mk = (icon: UiIconName, tint: string, title: string, desc: string, label: string, cls: string, run: () => void, needsServer = false): void => {
       const c = el('div', 'card');
-      c.append(this.cardHead(icon, tint, title, desc), btn(label, cls, run));
+      const b = btn(label, cls, run);
+      if (needsServer) { b.disabled = true; online.push(b); }
+      c.append(this.cardHead(icon, tint, title, desc), b);
       body.append(c);
     };
-    mk('trophy', '#ffcc33', 'Ranked duel', 'Live 1v1 against another player with a fair fixed build. Wins raise your rating.', 'FIND RANKED MATCH', 'gold', () => void this.startOnline(true));
-    mk('swords', '#9ad8ff', 'Casual duel', 'Live 1v1 with your own spells and gear. No rating change. A bot joins if nobody is around.', 'FIND CASUAL MATCH', 'blue', () => void this.startOnline(false));
-    mk('ghost', '#b8ffc4', 'Ghost duel', 'Fight a recording of another player. Your own runs are uploaded as ghosts too.', 'FIGHT A GHOST', 'green', () => void this.startGhost());
+    mk('trophy', '#ffcc33', 'Ranked duel', 'Live 1v1 against another player with a fair fixed build. Wins raise your rating.', 'FIND RANKED MATCH', 'gold', () => void this.startOnline(true), true);
+    mk('swords', '#9ad8ff', 'Casual duel', 'Live 1v1 with your own spells and gear. No rating change. A bot joins if nobody is around.', 'FIND CASUAL MATCH', 'blue', () => void this.startOnline(false), true);
+    mk('ghost', '#b8ffc4', 'Ghost duel', 'Fight a recording of another player. Your own runs are uploaded as ghosts too.', 'FIGHT A GHOST', 'green', () => void this.startGhost(), true);
+
+    // The online modes stay disabled until the server answers, so a tap cannot end in an error
+    // dialog that the screen already knew was coming.
+    void api.health().then(h => {
+      status.className = `server-pill ${h ? 'up' : 'down'}`;
+      status.lastChild!.textContent = h
+        ? `${h.players} wizard${h.players === 1 ? '' : 's'} online · ${h.ghosts} ghost${h.ghosts === 1 ? '' : 's'}`
+        : 'Server unreachable. Practice and friend codes still work.';
+      for (const b of online) b.disabled = !h;
+    });
 
     // Friend duels: a six-character code and no account system. No bot ever fills these rooms.
     const friend = el('div', 'card');
@@ -842,16 +871,18 @@ export class UI {
       btn('ENTER A CODE', 'ghost', () => this.askForCode()));
     friend.append(friendRow);
     body.append(friend);
-    const prac = el('div', 'card');
-    prac.append(this.cardHead('target', '#b8ffc4', 'Practice', 'Offline duel against a bot. Pick your challenge.'));
-    const row = el('div', 'menu-row');
-    row.append(btn('Easy', 'ghost', () => this.startDuel(new BotSession(this.save, 'easy'))), btn('Normal', 'ghost', () => this.startDuel(new BotSession(this.save, 'normal'))), btn('Hard', 'ghost', () => this.startDuel(new BotSession(this.save, 'hard'))));
-    prac.append(row);
-    body.append(prac);
-    const tips = el('div', 'card');
-    tips.append(this.cardHead('book', '#ffcc33', 'How duels differ'));
-    tips.append(el('div', 'desc', 'Spells chase the opponent\'s lane until halfway, then commit: dodge late. Both wizards have extra health, so read the pad, bait dodges, and save stamina.'));
-    body.append(tips);
+    const rerender = (): void => this.showDuelMenu();
+    body.append(this.drawer('duel-practice', 'target', '#b8ffc4', 'PRACTICE', 'Offline, no rating', false, card => {
+      card.append(el('div', 'desc', 'Offline duel against a bot. Pick your challenge.'));
+      const row = el('div', 'menu-row');
+      row.append(btn('Easy', 'ghost', () => this.startDuel(new BotSession(this.save, 'easy'))),
+        btn('Normal', 'ghost', () => this.startDuel(new BotSession(this.save, 'normal'))),
+        btn('Hard', 'ghost', () => this.startDuel(new BotSession(this.save, 'hard'))));
+      card.append(row);
+    }, rerender));
+    body.append(this.drawer('duel-tips', 'book', '#ffcc33', 'HOW DUELS DIFFER', 'Read me once', false, card => {
+      card.append(el('div', 'desc', 'Spells chase the opponent\'s lane until halfway, then commit: dodge late. Both wizards have extra health, so read the pad, bait dodges, and save stamina.'));
+    }, rerender));
     s.append(head, body);
     this.show('duel');
   }
@@ -2414,8 +2445,8 @@ export class UI {
 
   // ---------------------------------------------------------------- gear
   /** Which slot the collection below the wizard is filtering to, and which element inside it. */
-  /** Which of the two daily drawers on the hub is open, if either. */
-  private hubOpen: HubDrawer = null;
+  /** The one open drawer, anywhere in the app. Accordion: opening one closes the last. */
+  private openDrawer: string | null = null;
   private gearSlot: EquipSlot = 'hat';
   private gearElement: ElementId | 'all' = 'all';
   /** Kept between renders so the canvas and its WebGL context survive a re-render. */
@@ -2561,16 +2592,16 @@ export class UI {
    * map and four buttons all competing at once; this keeps the daily pair to one line each until
    * they are asked for, without hiding the fact that something is waiting to be claimed.
    */
-  private drawer(id: HubDrawer, icon: UiIconName, tint: string, title: string, note: string,
-    flag: boolean, fill: (card: HTMLElement) => void): HTMLElement {
-    const open = this.hubOpen === id;
+  private drawer(id: string, icon: UiIconName, tint: string, title: string, note: string,
+    flag: boolean, fill: (card: HTMLElement) => void, rerender: () => void = () => this.showMenu()): HTMLElement {
+    const open = this.openDrawer === id;
     const wrap = el('div', `drawer ${open ? 'open' : ''} ${flag ? 'ready' : ''}`);
     const head = el('button', 'drawer-head');
     head.append(uiIcon(icon, 24, tint), el('b', '', title), el('small', '', note), el('em', '', open ? '▴' : '▾'));
     head.addEventListener('click', () => {
       sfx.click();
-      this.hubOpen = open ? null : id;   // one at a time, or the screen is back where it started
-      this.showMenu();
+      this.openDrawer = open ? null : id;   // one at a time, or the screen is back where it started
+      rerender();
     });
     wrap.append(head);
     if (open) {
