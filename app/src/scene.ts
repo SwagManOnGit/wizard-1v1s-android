@@ -541,7 +541,7 @@ export class Arena {
     for (const e of events) {
       switch (e.type) {
         case 'spawn': this.spawnProjectile(e.p); break;
-        case 'impact': this.removeProjectile(e.p.id, true, e.hit); if (e.hit) { (e.who === 'player' ? this.player : this.enemy).hitT = 1; if (e.who === 'player') this.shake = 0.5; } break;
+        case 'impact': this.removeProjectile(e.p.id, true, e.hit); if (e.hit) (e.who === 'player' ? this.player : this.enemy).hitT = 1; break;
         case 'reflect': { const v = this.projViews.get(e.p.id); if (v) { this.particles.emit(v.last, col('#ffffff'), 25, 4, 0.5); (v.group.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>).material.color.set('#e6f2ff'); ((v.group.children[1] as THREE.Sprite).material as THREE.SpriteMaterial).color.set('#e6f2ff'); } break; }
         case 'cast':
           if (e.who === 'player') { this.player.castT = 1; this.particles.emit(this.player.orbWorld(new THREE.Vector3()), col(e.color), 14, 2, 0.4); }
@@ -631,6 +631,14 @@ export class Arena {
   setRunning(on: boolean): void { this.running = on; }
 
   /** A burst of an element's colour around the hero: the visual punctuation of a discovery. */
+  /**
+   * A camera kick, 0 to 1. Landing a spell used to move the camera not at all, so the player's own
+   * successful action — the entire point of the game — had no physical feedback while being hit did.
+   */
+  kick(strength: number): void {
+    this.shake = Math.max(this.shake, Math.max(0, Math.min(1, strength)));
+  }
+
   flashDiscovery(color: string): void {
     const p = this.playerAnchor();
     this.particles.emit(p.clone().setY(1.4), col(color), 90, 5, 1.4, -1.5, 1.4);

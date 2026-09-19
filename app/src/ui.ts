@@ -13,7 +13,7 @@ import {
   spellStatus, spellStroke, upgradePrice, wizardLevel,
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
-import { drawGlyph, type Point } from '@wizard/shared';
+import { drawGlyph, pointAlong, spellStroke as strokeOf, type Point } from '@wizard/shared';
 import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, slotIcon, upgradeIcon } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
@@ -277,6 +277,10 @@ export class UI {
   private padPoints: Point[] = [];
   private padDrawing = false;
   private padFlash = 0;
+  /** Set while the pad has something moving on it, so the loop keeps redrawing it. */
+  private padAnimating = false;
+  /** Frames of frozen time after a heavy impact. The oldest trick in the book and it was missing. */
+  private hitStop = 0;
   private padHint: SpellDef | null = null;
   private padHintT = 0;
   /** True while the peek button is held: the guide is shown and the duel carries on around it. */
@@ -953,6 +957,12 @@ export class UI {
     this.lastT = now;
     // The scripted duel slows the clock while the player learns to dodge, so it cannot be failed.
     if (this.ftueStep >= 0) dt *= this.ftueTimeScale;
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      this.updateHud(0);
+      this.drawPad();
+      return;
+    }
     if (this.duel) {
       const d = this.duel;
       d.tick(dt);
@@ -1116,6 +1126,12 @@ export class UI {
           }
           sfx.telegraph(); if (ev.kind === 'heal') this.popup('Healing...', 'enemy', 'small', '#7dff9b'); if (ev.kind === 'shield') this.popup('Shielding', 'enemy', 'small', '#6ea8ff'); break;
         case 'damage':
+          if (!ev.dot) {
+            // Scaled by how much of a health bar just went: a Spark taps, a Worldbreaker lands.
+            const share = ev.amount / Math.max(1, ev.who === 'enemy' ? this.battle?.enemy.maxHp ?? 1 : this.battle?.player.maxHp ?? 1);
+            this.arena?.kick(0.25 + Math.min(0.75, share * 4));
+            if (share > 0.08) this.hitStop = Math.min(0.11, 0.045 + share * 0.5);
+          }
           if (ev.who === 'enemy') { if (!ev.dot) sfx.hitEnemy(); this.popup(`-${fmt(ev.amount)}`, 'enemy', ev.amount >= 60 ? 'big' : ev.dot ? 'small' : '', ev.dot ? ev.color : '#ffffff'); if (ev.absorbed) this.popup(`${fmt(ev.absorbed)} blocked`, 'enemy', 'small', '#6ea8ff'); }
           else { if (!ev.dot) { sfx.hitPlayer(); if (this.save.settings.haptics) platform.haptic('medium'); } this.popup(`-${fmt(ev.amount)}`, 'player', ev.dot ? 'small' : '', ev.dot ? ev.color : '#ff6a6a'); if (ev.absorbed) { sfx.shield(); this.popup(`${fmt(ev.absorbed)} blocked`, 'player', 'small', '#6ea8ff'); } }
           break;
@@ -1128,7 +1144,10 @@ export class UI {
         case 'freeze': sfx.freeze(); this.popup('FROZEN', 'enemy', '', '#b8f4ff'); break;
         case 'interrupt': this.popup('INTERRUPTED', 'enemy', 'small', '#ffffff'); break;
         case 'revive': sfx.revive(); this.banner('REVIVED', 'The phoenix feather burns'); break;
-        case 'death': if (ev.who === 'enemy') { sfx.win(); this.banner('VICTORY', ''); } else { sfx.lose(); this.banner('DEFEATED', ''); } break;
+        case 'death':
+          // The longest freeze in the game, on the only moment that ends a fight.
+          this.hitStop = 0.16;
+          this.arena?.kick(1); if (ev.who === 'enemy') { sfx.win(); this.banner('VICTORY', ''); } else { sfx.lose(); this.banner('DEFEATED', ''); } break;
         case 'fizzle': this.castMessage(ev.reason === 'mana' ? 'Not enough mana' : ev.reason === 'stamina' ? 'Out of breath!' : 'On cooldown', true); sfx.fizzle(); break;
         default: break;
       }
@@ -1208,10 +1227,11 @@ export class UI {
     }
 
     if (this.castMsgT > 0) { this.castMsgT -= dt; if (this.castMsgT <= 0) h.castMsg.classList.remove('show'); }
-    if (this.padFlash > 0 || this.padHintT > 0 || this.padDrawing) {
+    if (this.padFlash > 0 || this.padHintT > 0 || this.padDrawing || this.padAnimating) {
       this.padFlash = Math.max(0, this.padFlash - dt);
       this.padHintT = Math.max(0, this.padHintT - dt);
       if (this.padHintT <= 0) this.padHint = null;
+      this.padAnimating = false;
       this.drawPad();
     }
   }
@@ -1430,7 +1450,11 @@ export class UI {
     }
     const r = b.cast(spell.id);
     if (r === 'ok' && this.ftueStep === 0) this.ftueEnter(1);
-    if (r === 'ok') { pad.classList.add('ok'); this.castMessage(`${spell.name}!`, false); }
+    if (r === 'ok') {
+      pad.classList.add('ok');
+      this.castMessage(`${spell.name}!`, false);
+      this.snapStrokeTo(spell);
+    }
     else pad.classList.add('bad');
   }
 
@@ -1465,6 +1489,20 @@ export class UI {
     return this.recogniseFloor() + 0.1 * (spell.cost / 65) * (1 - leniency(this.save.best));
   }
 
+  /**
+   * Replaces the wobbly line the player drew with the shape the recogniser matched, so the fade-out
+   * shows the glyph they meant rather than the one their thumb managed. It is the only moment in
+   * the game that says "yes, that" about the thing the whole game is made of.
+   */
+  private snapStrokeTo(spell: SpellDef): void {
+    const pad = this.hud.pad;
+    const rect = pad.getBoundingClientRect();
+    if (!rect.width) return;
+    const size = Math.min(rect.width, rect.height) * this.coverageFor(spell) / 0.86;
+    const ox = (rect.width - size) / 2, oy = (rect.height - size) / 2;
+    this.padPoints = strokeOf(spell).map(p => ({ x: ox + (p.x / 100) * size, y: oy + (p.y / 100) * size }));
+  }
+
   private drawPad(): void {
     const pad = this.hud?.pad; if (!pad) return;
     const g = pad.getContext('2d'); if (!g) return;
@@ -1487,9 +1525,22 @@ export class UI {
     if (guide && alpha > 0.02) {
       // Ghost glyph drawn at the size the spell actually requires (templates fill ~86% of their box).
       const size = (Math.min(w, h) * this.coverageFor(guide)) / 0.86;
+      const ox = (w - size) / 2, oy = (h - size) / 2;
       g.save(); g.globalAlpha = alpha;
-      drawGlyph(g, guide.glyph, (w - size) / 2, (h - size) / 2, size, guide.color, 4 * dpr, guide.reverse);
+      drawGlyph(g, guide.glyph, ox, oy, size, guide.color, 4 * dpr, guide.reverse);
+      // A light running the path the way the stroke has to go. Arrows say which way; a moving
+      // light says it without being read, and it shows where the stroke starts each time round.
+      const t = (performance.now() % 1600) / 1600;
+      const head = pointAlong(strokeOf(guide), t);
+      g.globalAlpha = Math.min(1, alpha * 2.2);
+      g.fillStyle = guide.color;
+      g.shadowColor = guide.color;
+      g.shadowBlur = 10 * dpr;
+      g.beginPath();
+      g.arc(ox + (head.x / 100) * size, oy + (head.y / 100) * size, 5 * dpr, 0, Math.PI * 2);
+      g.fill();
       g.restore();
+      this.padAnimating = true;
     } else if (!this.padDrawing && this.padPoints.length === 0) {
       g.save(); g.fillStyle = 'rgba(200,190,255,0.35)'; g.font = `${18 * dpr}px "Jersey 10", sans-serif`; g.textAlign = 'center';
       g.fillText('DRAW A GLYPH', w / 2, h / 2 + 6 * dpr); g.restore();

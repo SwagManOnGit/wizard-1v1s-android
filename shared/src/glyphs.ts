@@ -343,6 +343,18 @@ export function glyphStroke(id: GlyphId, reverse = false): Point[] {
   return reverse ? [...pts].reverse() : pts;
 }
 
+/** Total length of a polyline, in glyph-box units. */
+export function strokeLength(pts: Point[]): number {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return total;
+}
+
+/** The point a fraction of the way along a stroke, for anything that travels the path. */
+export function pointAlong(pts: Point[], fraction: number): Point {
+  return walk(pts, strokeLength(pts) * Math.max(0, Math.min(1, fraction))).p;
+}
+
 /** Cumulative length along a polyline, used to space the direction arrows evenly. */
 function walk(pts: Point[], target: number): { p: Point; dx: number; dy: number } {
   let acc = 0;

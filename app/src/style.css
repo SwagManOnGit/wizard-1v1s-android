@@ -90,7 +90,8 @@ canvas { image-rendering: pixelated; }
 .btn.green:active { box-shadow: inset -4px -4px 0 var(--green-dark), inset 4px 4px 0 #b8ffc4, 0 1px 0 var(--ink); }
 .btn.ghost { background: var(--win); box-shadow: inset -3px -3px 0 var(--ink), inset 3px 3px 0 var(--win3), 0 3px 0 var(--ink); }
 .btn.ghost:active { transform: translateY(2px); box-shadow: inset -3px -3px 0 var(--ink), inset 3px 3px 0 var(--win3); }
-.btn.small { font-size: 20px; padding: 5px 12px; min-height: 40px; }
+/* 44px is the floor in Apple's guidelines and close to Material's 48; 40 was under both. */
+.btn.small { font-size: 20px; padding: 5px 12px; min-height: 44px; }
 .btn.big { font-size: 32px; padding: 12px 28px; }
 
 /* ---------- splash ---------- */
@@ -462,7 +463,8 @@ canvas { image-rendering: pixelated; }
 /* ---------- chapters, wizard level and unrecorded spells ---------- */
 .wiz-level { flex: none; min-width: 54px; padding: 3px 6px 5px; text-align: center; font-size: 28px; line-height: 1; color: var(--gold2);
   background: var(--blue-dark); border: 3px solid var(--edge); box-shadow: inset -3px -3px 0 #101a5a, inset 3px 3px 0 var(--blue); text-shadow: 2px 2px 0 var(--ink); }
-.wiz-level small { display: block; font-size: 13px; letter-spacing: 2px; color: var(--blue-light); text-shadow: none; }
+/* var(--blue-light) measured 4.08:1 here, which is fine for large text and not for a 13px label. */
+.wiz-level small { display: block; font-size: 13px; letter-spacing: 2px; color: #a8c2ff; text-shadow: none; }
 .chapter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; scrollbar-width: none;
   min-width: 0; max-width: 100%; }
 .chapter-row::-webkit-scrollbar { display: none; }
@@ -477,4 +479,6 @@ canvas { image-rendering: pixelated; }
 .levelup { align-self: center; padding: 5px 12px; font-size: 24px; letter-spacing: 2px; color: var(--gold2); background: var(--blue-dark);
   border: 3px solid var(--gold); text-shadow: 2px 2px 0 var(--ink); animation: blink 0.6s steps(2) 3; }
 .kind.secret { color: var(--magenta); }
-.note.faint { color: #6f68b0; font-size: 15px; margin-top: 4px; }
+/* Was #6f68b0, which measured 3.04:1 on the card background: under the 4.5 floor for text this
+   size. #9891d2 is 5.18:1 and still reads as the quieter voice. */
+.note.faint { color: #9891d2; font-size: 15px; margin-top: 4px; }
