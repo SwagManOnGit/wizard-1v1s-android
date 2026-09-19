@@ -459,6 +459,108 @@ canvas { image-rendering: pixelated; }
 .woodshop .tab.active { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #3a2410; }
 .shop-tabs .tab span { line-height: 1; }
 
+/* The level badge carries its own progress bar, the way a king level does in Clash Royale. */
+.lv-bar { position: relative; height: 15px; margin-top: 3px; background: var(--ink); border: 2px solid var(--ink); }
+.lv-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(180deg, var(--gold2), var(--gold-dark)); }
+.lv-bar span { position: relative; display: block; text-align: center; font-size: 12px; line-height: 11px; color: #fff; text-shadow: 1px 1px 0 var(--ink); }
+
+/* Currency with a way to get more of it beside it. */
+.purse { display: flex; align-items: center; gap: 6px; }
+.purse-plus {
+  flex: none; width: 30px; height: 30px; padding: 0; font-size: 24px; line-height: 1;
+  background: var(--green); color: var(--ink); border: 3px solid var(--ink);
+  box-shadow: inset -2px -2px 0 var(--green-dark), inset 2px 2px 0 #b8ffc4, 0 3px 0 var(--ink);
+}
+.purse-plus:active { transform: translateY(2px); box-shadow: inset -2px -2px 0 var(--green-dark), inset 2px 2px 0 #b8ffc4; }
+
+/* ---------- the loadout screen ----------
+   Laid out the way Clash Royale lays out a battle deck: the thing you own at the top, a banner
+   naming it, a fixed row of worn slots under the banner, then "choose one" and the collection.
+   The difference is that the thing you own is a wizard in three dimensions rather than eight cards. */
+
+.wizard-stage {
+  position: relative; flex: none; height: 34vh; min-height: 200px; max-height: 300px;
+  border-bottom: 4px solid var(--ink); box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+  /* Plain first, tinted second: a WebView too old for color-mix keeps the plain one rather than
+     dropping the background entirely. */
+  background: linear-gradient(180deg, var(--win) 0%, var(--bg) 100%);
+  background:
+    radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--stage-glow, #6ea8ff) 45%, transparent) 0%, rgba(0,0,0,0) 62%),
+    linear-gradient(180deg, var(--win) 0%, var(--bg) 100%);
+  overflow: hidden;
+}
+.wizard-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.wizard-stage > canvas:not(.wizard-canvas) { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+
+.wizard-plate { position: absolute; left: 12px; top: 10px; pointer-events: none; text-shadow: 2px 2px 0 var(--ink); }
+.wizard-plate b { display: block; font-size: 26px; color: var(--gold); }
+.wizard-plate span { font-size: 17px; color: #d6dcff; }
+.wizard-hint { position: absolute; right: 10px; bottom: 8px; font-size: 14px; letter-spacing: 2px; color: var(--muted); opacity: 0.55; pointer-events: none; }
+
+/* The banner. Raised, centred title, a token on one side and progress on the other. */
+.deck-band {
+  flex: none; display: flex; align-items: center; gap: 10px; margin: 10px 0 8px; padding: 6px 10px;
+  background: linear-gradient(180deg, var(--win3), var(--win2)); border: 3px solid var(--ink);
+  box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 rgba(255,255,255,0.18), 0 4px 0 var(--ink);
+}
+.deck-token { flex: none; display: flex; }
+.deck-title { flex: 1; min-width: 0; text-align: center; font-size: 24px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.deck-band .pips { flex: none; margin: 0; }
+.deck-note { font-size: 18px; color: var(--gold2); margin-bottom: 4px; }
+.deck-next { margin-bottom: 10px; }
+
+/* The four worn slots, always four across however narrow the phone is. */
+.deck-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.slot-card {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 3px 7px;
+  background: linear-gradient(180deg, var(--win2), var(--win)); color: var(--text);
+  border: 3px solid var(--slot-tint, var(--win3)); box-shadow: inset -2px -2px 0 rgba(0,0,0,0.4), 0 4px 0 var(--ink);
+  min-height: 108px; text-align: center;
+}
+.slot-card:active { transform: translateY(3px); box-shadow: inset -2px -2px 0 rgba(0,0,0,0.4), 0 1px 0 var(--ink); }
+.slot-card.empty { border-style: dashed; border-color: var(--win3); opacity: 0.75; }
+.slot-card.picked { border-color: var(--gold); box-shadow: inset -2px -2px 0 rgba(0,0,0,0.4), 0 0 0 3px var(--gold2), 0 4px 0 var(--ink); }
+.slot-art { display: flex; align-items: center; justify-content: center; height: 46px; }
+.slot-name { font-size: 15px; line-height: 1.05; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.slot-kind { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); }
+
+/* "Select card to be replaced", in this game's words. */
+.pick-head {
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin: 12px 0 8px; padding: 5px 0;
+  font-size: 21px; letter-spacing: 1px; color: var(--gold2); text-shadow: 2px 2px 0 var(--ink);
+  border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); background: rgba(0,0,0,0.25);
+}
+.pick-head canvas { flex: none; }
+
+.element-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 6px; scrollbar-width: none; }
+.element-strip::-webkit-scrollbar { display: none; }
+.el-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; min-height: 44px;
+  background: var(--win); color: var(--muted); border: 3px solid var(--ink);
+  box-shadow: inset 2px 2px 0 var(--win3); font-size: 18px;
+}
+.el-chip canvas { flex: none; }
+.el-chip.on { color: var(--ink); background: var(--chip-tint, var(--gold)); box-shadow: inset 2px 2px 0 rgba(255,255,255,0.4); }
+
+.pick-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.pick-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px;
+  background: linear-gradient(180deg, var(--win2), var(--win)); color: var(--text); text-align: center;
+  border: 3px solid var(--slot-tint, var(--win3)); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), 0 4px 0 var(--ink);
+}
+.pick-card:active { transform: translateY(3px); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), 0 1px 0 var(--ink); }
+.pick-card .slot-name { font-size: 19px; -webkit-line-clamp: 2; }
+.pick-desc { font-size: 15px; color: var(--muted); }
+.pick-card.worn { background: #3a3098; }
+.worn-tag {
+  position: absolute; right: -3px; top: -3px; padding: 2px 7px; font-size: 14px; letter-spacing: 2px;
+  background: var(--gold); color: var(--ink); border: 3px solid var(--ink);
+}
+
+@media (min-width: 520px) {
+  .pick-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
 /* ---------- season ---------- */
 .season-bar { margin-top: 6px; }
 .season-label { font-size: 16px; letter-spacing: 1px; color: var(--muted); }

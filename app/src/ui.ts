@@ -4,21 +4,21 @@ import { setMusic, sfx, unlockAudio } from './audio';
 import { Battle, type BattleEvent } from '@wizard/shared';
 import {
   AD_REWARD, BUYABLE_ELEMENTS, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
-  RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
+  ATTUNING_RARITY, RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
   LISTED_SPELLS, SEASON_DAYS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, TIER_XP, UPGRADES,
-  activeSetBonus, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
+  activeSetBonus, affinities, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   nextArena,
   isAttuned, isBossLevel, isChapterBoss,
   chestOdds, makeDuelCode, normaliseDuelCode, openChest, requirementText, rollItem, rollLevelDrop, shiftColor,
   spellStatus, spellStroke, upgradePrice, wizardLevel,
-  type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
+  type ChestDef, type ElementId, type EnemyDef, type EquipDef, type EquipSlot, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, pointAlong, spellStroke as strokeOf, type Point } from '@wizard/shared';
 import { ICON_PX, achievementIcon, elementIcon, gearIcon, makePixelCanvas, placeIcon, questIcon, rewardIcon, slotIcon, uiIcon, upgradeIcon, wizardPortrait, type UiIconName } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
-import { Arena } from './scene';
+import { Arena, WizardView } from './scene';
 import { CONFIG, platform, webPlatform } from './platform';
 import { setMusicEnabled, setSfxEnabled } from './audio';
 import { api } from './net/api';
@@ -337,6 +337,7 @@ export class UI {
 
   private show(id: ScreenId): void {
     if (this.overlayDismiss) this.overlayDismiss();
+    if (id !== 'gear') this.wizardView?.stop();
     for (const [k, s] of Object.entries(this.screens)) s.classList.toggle('active', k === id);
     this.nav.classList.toggle('hidden', !UI.NAV_SCREENS.includes(id));
     this.syncNav(id);
@@ -346,7 +347,7 @@ export class UI {
   private buildNav(): void {
     const tabs: { id: ScreenId; label: string; go: () => void; main?: boolean }[] = [
       { id: 'shop', label: 'Shop', go: () => this.showShop('elements') },
-      { id: 'gear', label: 'Gear', go: () => this.showGear() },
+      { id: 'gear', label: 'Loadout', go: () => this.showGear() },
       { id: 'menu', label: 'Battle', go: () => this.showMenu(), main: true },
       { id: 'spellbook', label: 'Spells', go: () => this.showSpellbook() },
       { id: 'market', label: 'Market', go: () => this.showMarket() },
@@ -453,12 +454,22 @@ export class UI {
     const bar = el('div', 'player-bar');
     const badge = el('div', 'wiz-level');
     badge.innerHTML = `<small>LV</small>${wizardLevel(this.save.best)}`;
+    const inChapter = this.save.best % CHAPTER_SIZE;
+    const xp = el('div', 'lv-bar');
+    const xpFill = el('div', 'lv-fill');
+    xpFill.style.width = `${Math.round((inChapter / CHAPTER_SIZE) * 100)}%`;
+    xp.append(xpFill, el('span', '', `${inChapter}/${CHAPTER_SIZE}`));
+    badge.append(xp);
     const idBox = el('div', 'who-box');
     const nameLine = el('div', 'who-name', this.save.name);
     if (this.save.title) nameLine.append(el('span', 'worn-title', ` ${this.save.title}`));
     idBox.append(nameLine, el('div', 'who-sub',
       `${arenaFor(this.save.rating).name} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
-    bar.append(badge, idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
+    const purse = el('div', 'purse');
+    const plus = el('button', 'purse-plus', '+');
+    plus.addEventListener('click', () => { sfx.click(); this.showMarket(); });
+    purse.append(el('div', 'coins', fmt(this.save.coins)), plus);
+    bar.append(badge, idBox, purse, btn('⚙', 'small ghost', () => this.showSettings()));
 
     // One line, always, saying what to do next.
     const goal = this.nextGoal();
@@ -2389,48 +2400,161 @@ export class UI {
   }
 
   // ---------------------------------------------------------------- gear
+  /** Which slot the collection below the wizard is filtering to, and which element inside it. */
+  private gearSlot: EquipSlot = 'hat';
+  private gearElement: ElementId | 'all' = 'all';
+  /** Kept between renders so the canvas and its WebGL context survive a re-render. */
+  private wizardStage: HTMLElement | null = null;
+  private wizardView: WizardView | null = null;
+
+  /**
+   * The wizard on his plinth. Built once: tearing down a WebGL context on every equip would cost
+   * more than the whole screen, and the point is that the model changes while you watch it.
+   */
+  private ensureWizardStage(): HTMLElement {
+    if (this.wizardStage) return this.wizardStage;
+    const stage = el('div', 'wizard-stage');
+    const canvas = document.createElement('canvas');
+    canvas.className = 'wizard-canvas';
+    stage.append(canvas);
+    const view = new WizardView(canvas, playerLook(this.save));
+    if (view.ok) this.wizardView = view;
+    else { canvas.remove(); stage.append(wizardPortrait(150)); }   // no WebGL: the pixel portrait still says who you are
+    stage.append(el('div', 'wizard-plate'), el('div', 'wizard-hint', 'drag to turn'));
+    this.wizardStage = stage;
+    return stage;
+  }
+
+  /** One of the four worn slots, as a card in the row under the wizard. */
+  private slotCard(slot: { id: EquipSlot; name: string }): HTMLElement {
+    const id = this.save.equipped[slot.id];
+    const item = id ? EQUIP_BY_ID[id] : undefined;
+    const picked = this.gearSlot === slot.id;
+    const card = el('button', `slot-card ${picked ? 'picked' : ''} ${item ? '' : 'empty'}`);
+    if (item) card.style.setProperty('--slot-tint', RARITY_COLORS[item.rarity]);
+    const art = el('div', 'slot-art');
+    art.append(item ? gearIcon(item.slot, item.rarity, 46, ELEMENT_BY_ID[item.element].color) : slotIcon(slot.id, 46));
+    card.append(art, el('div', 'slot-name', item ? item.name : slot.name));
+    card.append(el('div', 'slot-kind', item ? RARITY_NAMES[item.rarity] : 'empty'));
+    card.addEventListener('click', () => { sfx.click(); this.gearSlot = slot.id; this.showGear(); });
+    return card;
+  }
+
   showGear(): void {
     this.stopLoop();
     setMusic('menu');
     const s = this.screens.gear;
+    const body0 = s.querySelector('.shop-body') as HTMLElement | null;
+    const scrollTop = body0?.scrollTop ?? 0;
+    const stage = this.ensureWizardStage();
+    stage.remove();                        // detach before innerHTML clears the screen, so the context lives
     s.innerHTML = '';
+
     const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'GEAR'), el('div', 'coins', fmt(this.save.coins)));
-    const body = el('div', 'shop-body');
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'LOADOUT'), el('div', 'coins', fmt(this.save.coins)));
 
-    // Set summary: the whole point of collecting one element.
-    const set = setSummary(this.save);
-    const bonus = activeSetBonus(this.save.equipped);
-    if (set) {
-      const elDef = ELEMENT_BY_ID[set.element];
-      const summary = el('div', 'card set-card');
-      summary.style.borderColor = elDef.color;
-      const h = el('div', 'with-icon'); h.append(elementIcon(set.element, 34), document.createTextNode(`${elDef.name} set: ${set.count} of ${SET_SIZE}`));
-      const pips = el('div', 'pips');
-      for (let i = 0; i < SET_SIZE; i++) pips.append(el('span', `pip big ${i < set.count ? 'on' : ''}`));
-      summary.append(h, pips);
-      summary.append(el('div', 'desc', bonus ? `${bonus.bonus.name}: ${bonus.bonus.desc}` : 'Wear two pieces of one element for the first set bonus.'));
-      const nextBonus = SET_BONUSES.find(b => b.pieces > set.count);
-      summary.append(el('div', 'note', nextBonus
-        ? `At ${nextBonus.pieces} pieces: ${nextBonus.desc}`
-        : `Full set: every ${elDef.name} spell is findable now, including its Mythic.`));
-      body.append(summary);
+    // The plinth glows in the colour of whatever set is closest to complete.
+    //
+    // Counted with affinities(), not setSummary(): only Fine or better counts towards a set bonus,
+    // and the old screen filled a pip for every matching piece regardless. That made four starter
+    // rags read as a finished set while the bonus line underneath said nothing was active.
+    const aff = affinities(this.save.equipped);
+    let set: { element: ElementId; count: number } | null = null;
+    for (const [e, n] of Object.entries(aff) as [ElementId, number][]) {
+      if (!set || n > set.count) set = { element: e, count: n };
     }
+    const nearest = set ?? setSummary(this.save);   // nothing qualifies yet: colour by what is worn
+    const setDef = nearest ? ELEMENT_BY_ID[nearest.element] : null;
+    const setCount = set?.count ?? 0;
+    stage.style.setProperty('--stage-glow', setDef ? setDef.color : '#6ea8ff');
+    const plate = stage.querySelector('.wizard-plate') as HTMLElement;
+    plate.innerHTML = '';
+    plate.append(el('b', '', this.save.name), el('span', '', `Level ${wizardLevel(this.save.best)} · ${arenaFor(this.save.rating).name}`));
+    this.wizardView?.setLook(playerLook(this.save));
 
-    for (const slot of EQUIP_SLOTS) {
-      const cur = this.save.equipped[slot.id] ? EQUIP_BY_ID[this.save.equipped[slot.id] as string] : undefined;
-      const title = el('div', 'section-title');
-      const tl = el('span', 'with-icon'); tl.append(slotIcon(slot.id, 26), document.createTextNode(slot.name));
-      title.append(tl, el('small', '', cur ? cur.name : 'empty'));
-      body.append(title);
-      const owned = ownedInSlot(this.save, slot.id);
-      if (!owned.length) { body.append(el('div', 'card', 'Nothing yet. Win levels and open chests.')); continue; }
-      const grid = el('div', 'grid');
-      for (const item of owned) grid.append(this.gearCard(item, cur?.id === item.id));
+    const body = el('div', 'shop-body loadout');
+
+    // The banner over the worn row, in the shape Clash Royale uses over a battle deck: a token on
+    // the left, the name of the thing in the middle, its progress on the right.
+    const band = el('div', 'deck-band');
+    const token = el('div', 'deck-token');
+    token.append(nearest ? elementIcon(nearest.element, 30) : uiIcon('spark', 30, '#9ad8ff'));
+    const pips = el('div', 'pips');
+    for (let i = 0; i < SET_SIZE; i++) pips.append(el('span', `pip big ${i < setCount ? 'on' : ''}`));
+    band.append(token, el('div', 'deck-title', nearest ? `${setDef!.name} set` : 'No set'), pips);
+
+    const bonus = activeSetBonus(this.save.equipped);
+    const nextBonus = SET_BONUSES.find(b => b.pieces > setCount);
+    const bandNote = el('div', 'deck-note', bonus
+      ? `${bonus.bonus.name}: ${bonus.bonus.desc}`
+      : `Wear two pieces of one element, ${RARITY_NAMES[ATTUNING_RARITY]} or better, for the first set bonus.`);
+
+    const row = el('div', 'deck-row');
+    for (const slot of EQUIP_SLOTS) row.append(this.slotCard(slot));
+    body.append(band, row, bandNote);
+    if (nextBonus) body.append(el('div', 'note faint deck-next', `At ${nextBonus.pieces} pieces: ${nextBonus.desc}`));
+
+    // ---- the picker ------------------------------------------------------------------
+    const slotDef = EQUIP_SLOTS.find(x => x.id === this.gearSlot)!;
+    const prompt = el('div', 'pick-head');
+    prompt.append(slotIcon(this.gearSlot, 26), el('span', '', `Choose a ${slotDef.name.toLowerCase()}`));
+    body.append(prompt);
+
+    const owned = ownedInSlot(this.save, this.gearSlot);
+    const haveElements = new Set(owned.map(o => o.element));
+    const strip = el('div', 'element-strip');
+    const chip = (label: string, on: boolean, tint: string, icon: HTMLCanvasElement | null, run: () => void): void => {
+      const c = el('button', `el-chip ${on ? 'on' : ''}`);
+      c.style.setProperty('--chip-tint', tint);
+      if (icon) c.append(icon);
+      c.append(el('span', '', label));
+      c.addEventListener('click', () => { sfx.click(); run(); });
+      strip.append(c);
+    };
+    chip('All', this.gearElement === 'all', '#ffcc33', null, () => { this.gearElement = 'all'; this.showGear(); });
+    for (const e of ELEMENTS) {
+      if (!haveElements.has(e.id)) continue;
+      chip(e.name, this.gearElement === e.id, e.color, elementIcon(e.id, 22), () => { this.gearElement = e.id; this.showGear(); });
+    }
+    if (strip.children.length > 1) body.append(strip);
+
+    const shown = owned.filter(o => this.gearElement === 'all' || o.element === this.gearElement);
+    if (!shown.length) {
+      body.append(el('div', 'card', owned.length
+        ? 'Nothing of that element in this slot yet.'
+        : 'Nothing for this slot yet. Win levels and open chests.'));
+    } else {
+      const grid = el('div', 'pick-grid');
+      for (const item of shown) grid.append(this.pickCard(item, this.save.equipped[item.slot] === item.id));
       body.append(grid);
     }
-    s.append(head, body);
+
+    s.append(head, stage, body);
+    body.scrollTop = scrollTop;
     this.show('gear');
+    this.wizardView?.start();
+  }
+
+  /** A collection tile: art, name, rarity, and the stat line it is really chosen for. */
+  private pickCard(item: EquipDef, worn: boolean): HTMLElement {
+    const elDef = ELEMENT_BY_ID[item.element];
+    const card = el('button', `pick-card ${worn ? 'worn' : ''}`);
+    card.style.setProperty('--slot-tint', RARITY_COLORS[item.rarity]);
+    card.append(gearIcon(item.slot, item.rarity, 52, elDef.color));
+    card.append(el('div', 'slot-name', item.name));
+    card.append(el('div', 'slot-kind', `${RARITY_NAMES[item.rarity]} · ${elDef.name}`));
+    card.append(el('div', 'pick-desc', item.desc));
+    if (worn) card.append(el('div', 'worn-tag', 'WORN'));
+    else card.addEventListener('click', () => {
+      sfx.buy();
+      equipItem(this.save, item.id);
+      this.commit();
+      this.afterProgress();
+      this.wizardView?.setLook(playerLook(this.save));
+      this.wizardView?.flourish();
+      this.showGear();
+    });
+    return card;
   }
 
   /** "0.4% of wizards know this", once the board has answered. A private moment made public. */
@@ -2444,19 +2568,7 @@ export class UI {
     return row;
   }
 
-  private gearCard(item: EquipDef, equipped: boolean): HTMLElement {
-    const elDef = ELEMENT_BY_ID[item.element];
-    const card = el('div', `card ${equipped ? 'equipped' : ''}`);
-    card.style.borderColor = RARITY_COLORS[item.rarity];
-    const headRow = el('div', 'head');
-    const nb = el('div');
-    nb.append(el('div', 'name', item.name), el('div', 'kind', `${RARITY_NAMES[item.rarity]} · ${elDef.name}`));
-    headRow.append(gearIcon(item.slot, item.rarity, 44, elDef.color), nb);
-    card.append(headRow, el('div', 'desc', item.desc));
-    if (equipped) card.append(btn('Worn', 'ghost'));
-    else card.append(btn('Wear', 'green', () => { equipItem(this.save, item.id); this.commit(); this.afterProgress(); this.showGear(); }));
-    return card;
-  }
+
 
   /** Shown after a drop or a chest: what you got, and whether it was new. */
   private showLoot(results: GrantResult[], title: string): void {

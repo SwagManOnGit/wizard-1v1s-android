@@ -321,6 +321,131 @@ function makeSky(): { mesh: THREE.Mesh; top: THREE.Color; bottom: THREE.Color } 
 // ---- arena ---------------------------------------------------------------------------
 interface ProjView { group: THREE.Group; p: Projectile; ring?: THREE.Mesh; last: THREE.Vector3 }
 
+/**
+ * The player's own wizard on a turntable, for the loadout screen: its own tiny scene, its own
+ * renderer, and nothing in it but the hero, a floor disc and a light rig warm enough to read the
+ * robe colour. Equipping something calls setLook and the model changes while it is being looked at,
+ * which is the whole point of the screen.
+ *
+ * It keeps its own rAF loop, and that loop must be stopped when the screen is hidden — a phone will
+ * happily render an invisible canvas until the battery is gone.
+ */
+export class WizardView {
+  readonly ok: boolean;
+  private renderer!: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private camera!: THREE.PerspectiveCamera;
+  private wizard!: Wizard;
+  private turn = new THREE.Group();
+  private canvas: HTMLCanvasElement;
+  private raf = 0;
+  private last = 0;
+  private time = 0;
+  /** Where the turntable is being dragged to, and how fast it is drifting back to idle. */
+  private spin = 0;
+  private dragging = false;
+  private dragFrom = 0;
+  private dragSpin = 0;
+
+  constructor(canvas: HTMLCanvasElement, look: WizardLook) {
+    this.canvas = canvas;
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'low-power' });
+    } catch {
+      this.ok = false;
+      return;
+    }
+    this.ok = true;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * 0.75);
+
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 40);
+
+    // Brighter than the arena on purpose: this is a shop window, not a night battle.
+    this.scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x3a2f55, 0.85));
+    const key = new THREE.DirectionalLight(0xfff1d6, 1.15); key.position.set(3, 6, 5); this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8ab4ff, 0.7); rim.position.set(-4, 3, -4); this.scene.add(rim);
+
+    // A disc to stand on, so the wizard is somewhere rather than floating.
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.0, 28),
+      new THREE.MeshBasicMaterial({ color: col('#2c2492'), transparent: true, opacity: 0.85 }),
+    );
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.005; this.turn.add(disc);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.0, 1.12, 28),
+      new THREE.MeshBasicMaterial({ color: col('#ffcc33'), transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; this.turn.add(ring);
+
+    // facing 1 means the model looks down +Z, which is where the camera is.
+    this.wizard = new Wizard(look, 1);
+    this.turn.add(this.wizard.group);
+    this.scene.add(this.turn);
+
+    canvas.addEventListener('pointerdown', this.onDown);
+    canvas.addEventListener('pointermove', this.onMove);
+    canvas.addEventListener('pointerup', this.onUp);
+    canvas.addEventListener('pointercancel', this.onUp);
+  }
+
+  private onDown = (e: PointerEvent): void => {
+    this.dragging = true; this.dragFrom = e.clientX; this.dragSpin = this.spin;
+    this.canvas.setPointerCapture(e.pointerId);
+  };
+  private onMove = (e: PointerEvent): void => {
+    if (!this.dragging) return;
+    this.spin = this.dragSpin + (e.clientX - this.dragFrom) * 0.012;
+  };
+  private onUp = (): void => { this.dragging = false; };
+
+  setLook(look: WizardLook): void { if (this.ok) this.wizard.setLook(look); }
+
+  /** The staff comes up once, the way it does on a cast. Used when something is equipped. */
+  flourish(): void { if (this.ok) this.wizard.castT = 1; }
+
+  start(): void {
+    if (!this.ok || this.raf) return;
+    this.last = performance.now();
+    const step = (now: number): void => {
+      this.raf = requestAnimationFrame(step);
+      const dt = Math.min(0.05, (now - this.last) / 1000);
+      this.last = now; this.time += dt;
+      this.resize();
+      // Idle sway when nobody is holding it, and a slow drift back to front-on afterwards.
+      if (!this.dragging) this.spin += (Math.sin(this.time * 0.55) * 0.38 - this.spin) * Math.min(1, dt * 1.2);
+      this.turn.rotation.y = this.spin;
+      this.wizard.update(dt, this.time);
+      this.renderer.render(this.scene, this.camera);
+    };
+    this.raf = requestAnimationFrame(step);
+  }
+
+  stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } }
+
+  private resize(): void {
+    const w = Math.max(1, this.canvas.clientWidth), h = Math.max(1, this.canvas.clientHeight);
+    if (this.canvas.width === Math.round(w * this.renderer.getPixelRatio())
+      && this.canvas.height === Math.round(h * this.renderer.getPixelRatio())) return;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    // Pull back on a narrow box so the hat and the staff stay inside it.
+    const back = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 2.2 : 0;
+    this.camera.position.set(0, 2.05, 5.2 + back);
+    this.camera.lookAt(0, 1.45, 0);
+    this.camera.updateProjectionMatrix();
+  }
+
+  dispose(): void {
+    this.stop();
+    if (!this.ok) return;
+    this.canvas.removeEventListener('pointerdown', this.onDown);
+    this.canvas.removeEventListener('pointermove', this.onMove);
+    this.canvas.removeEventListener('pointerup', this.onUp);
+    this.canvas.removeEventListener('pointercancel', this.onUp);
+    this.renderer.dispose();
+  }
+}
+
 export class Arena {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
