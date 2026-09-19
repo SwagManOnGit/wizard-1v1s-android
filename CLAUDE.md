@@ -26,6 +26,20 @@ coded room never fills with a bot.
 /api/health` answering proves *a* server is up, not yours — a stale process holding 2567 will serve
 old code and make a working change look broken. This has cost time twice.
 
+**The emulator reaches the duel server through `adb reverse`, and only in debug builds.**
+
+```bash
+adb reverse tcp:2567 tcp:2567
+```
+
+The reverse has to be set again after the emulator restarts. Two rules were stopping the call and
+both are lifted for debug only, on purpose: `app/src/debug/res/xml/network_security_config.xml`
+permits cleartext to the loopback names, because Android has blocked plain HTTP since API 28; and
+MainActivity sets `MIXED_CONTENT_ALWAYS_ALLOW`, because the web layer is served from
+https://localhost and an http://localhost:2567 call from it is mixed content. Release builds keep
+both platform defaults and reach the server over https. If Rankings says it needs a connection on
+the emulator, check the reverse first.
+
 ## Building the Android app locally
 
 The toolchain is installed but not on PATH, so export these first. JAVA_HOME must point at 21:

@@ -1,6 +1,8 @@
 package com.swaggames.wizard1v1s;
 
+import android.content.pm.ApplicationInfo;
 import android.os.Bundle;
+import android.webkit.WebSettings;
 
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -23,6 +25,22 @@ public class MainActivity extends BridgeActivity {
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     goImmersive();
+    allowLocalHttpInDebug();
+  }
+
+  /**
+   * The web layer is served from https://localhost, so a call to the development duel server on
+   * http://localhost:2567 is mixed content and the WebView drops it. Debug builds allow it; release
+   * builds keep the default, where the only way out is https.
+   *
+   * The other half of this is src/debug/res/xml/network_security_config.xml, which permits cleartext
+   * to the loopback names. Both are needed: one is the WebView's rule, the other the platform's.
+   */
+  private void allowLocalHttpInDebug() {
+    // BuildConfig is not generated for this module, and the debuggable flag says the same thing.
+    if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
+    WebSettings settings = getBridge().getWebView().getSettings();
+    settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
   }
 
   @Override
