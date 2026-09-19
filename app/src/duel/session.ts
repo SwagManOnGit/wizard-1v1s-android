@@ -140,12 +140,14 @@ export class OnlineSession implements DuelSession {
     this.view = new PvpView(new PvpBattle({ seed: 1, loadouts: [save.loadout, save.loadout], stats: [stats, stats] }), 0, '...');
   }
 
-  static async connect(save: SaveData, ranked: boolean): Promise<OnlineSession> {
+  static async connect(save: SaveData, ranked: boolean, code = ''): Promise<OnlineSession> {
     const s = new OnlineSession(save, ranked);
     const client = new Client(api.wsUrl());
-    s.room = await client.joinOrCreate(DUEL_ROOM, { v: PROTOCOL_VERSION, deviceId: save.deviceId, name: save.name, loadout: save.loadout, build: buildOf(save), ranked });
-    s.status = 'Finding an opponent...';
-    s.room.onMessage('wait', (d: { seconds: number }) => { s.status = `Finding an opponent... a bot steps in after ${d.seconds}s`; });
+    s.room = await client.joinOrCreate(DUEL_ROOM, { v: PROTOCOL_VERSION, deviceId: save.deviceId, name: save.name, loadout: save.loadout, build: buildOf(save), ranked, code });
+    s.status = code ? `Waiting for a friend on code ${code}...` : 'Finding an opponent...';
+    s.room.onMessage('wait', (d: { seconds: number }) => {
+      s.status = code ? `Waiting on code ${code}... the room closes after ${d.seconds}s` : `Finding an opponent... a bot steps in after ${d.seconds}s`;
+    });
     s.room.onMessage('start', (d: StartMessage) => s.onStart(d));
     s.room.onMessage('snap', (d: PvpSnapshot) => { if (s.started) s.view.sim.applySnapshot(d); });
     s.room.onMessage('ev', (d: PvpEvent[]) => { if (s.started) s.queued.push(...d.map(hydrate)); });

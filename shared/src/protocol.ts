@@ -21,6 +21,27 @@ export interface DiscoveryBoard {
   spells: Record<string, { holders: number; first: string | null }>;
 }
 
+/** Unambiguous by design: no O or 0, no I or 1, because these get read aloud and typed in. */
+export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const CODE_LENGTH = 6;
+
+export function makeDuelCode(rand: () => number = Math.random): string {
+  let out = '';
+  for (let i = 0; i < CODE_LENGTH; i++) out += CODE_ALPHABET[Math.floor(rand() * CODE_ALPHABET.length)];
+  return out;
+}
+
+/**
+ * Tolerant of how people actually type a code read aloud: lower case, spaces, dashes.
+ *
+ * Anything outside the alphabet is simply dropped, including the O, 0, I and 1 that the alphabet
+ * leaves out on purpose. There is no sensible character to map those to, and guessing one would
+ * turn a mistyped code into a different valid code.
+ */
+export function normaliseDuelCode(raw: string): string {
+  return [...raw.toUpperCase()].filter(c => CODE_ALPHABET.includes(c)).join('').slice(0, CODE_LENGTH);
+}
+
 export const PROTOCOL_VERSION = 1;
 export const DUEL_ROOM = 'duel';
 export const TICK_RATE = 30;
@@ -34,6 +55,8 @@ export interface JoinOptions {
   loadout: string[];
   build: Build;
   ranked: boolean;
+  /** A friend-duel code. Empty for public matchmaking, which is what keeps the two apart. */
+  code?: string;
 }
 
 export type ClientMessage =

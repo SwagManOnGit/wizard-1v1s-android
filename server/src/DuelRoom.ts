@@ -8,6 +8,8 @@ import {
 import type { Store } from './store';
 
 const BOT_WAIT_SECONDS = 8;
+/** A friend room holds the seat open instead of filling it: the whole point is who arrives. */
+const FRIEND_WAIT_SECONDS = 180;
 const MAX_DURATION = 240;
 
 interface Seat { client: Client | null; deviceId: string; name: string; loadout: string[]; build: Build; rating: number; ready: boolean }
@@ -18,15 +20,17 @@ export class DuelRoom extends Room {
   private sim: PvpBattle | null = null;
   private bot: PvpBot | null = null;
   private ranked = false;
+  private code = '';
   private waitT = 0;
   private countdown = 0;
   private snapAcc = 0;
   private ended = false;
   private store!: Store;
 
-  onCreate(options: { store: Store; ranked?: boolean }): void {
+  onCreate(options: { store: Store; ranked?: boolean; code?: string }): void {
     this.store = options.store;
     this.ranked = !!options.ranked;
+    this.code = typeof options.code === 'string' ? options.code : '';
     this.setSimulationInterval(dt => this.update(dt / 1000), 1000 / TICK_RATE);
     this.onMessage('input', (client, msg: ClientMessage) => this.onInput(client, msg));
     this.onMessage('ready', client => { const s = this.seats.find(x => x.client === client); if (s) s.ready = true; });
@@ -38,7 +42,7 @@ export class DuelRoom extends Room {
     const rec = this.store.player(options.deviceId ?? client.sessionId, sanitizeName(options.name));
     this.seats.push({ client, deviceId: rec.deviceId, name: rec.name, loadout: loadout.length ? loadout : [...STARTING_SPELLS], build, rating: rec.rating, ready: false });
     if (this.seats.length === 2) this.start();
-    else this.sendTo(client, { t: 'wait', d: { seconds: BOT_WAIT_SECONDS } });
+    else this.sendTo(client, { t: 'wait', d: { seconds: this.code ? FRIEND_WAIT_SECONDS : BOT_WAIT_SECONDS } });
   }
 
   onLeave(client: Client): void {
@@ -75,6 +79,8 @@ export class DuelRoom extends Room {
   private update(dt: number): void {
     if (!this.sim) {
       this.waitT += dt;
+      // Never drop a bot into a friend room: the friend would arrive to find the seat taken.
+      if (this.code) { if (this.waitT >= FRIEND_WAIT_SECONDS) this.disconnect(); return; }
       if (this.waitT >= BOT_WAIT_SECONDS && this.seats.length === 1) {
         this.seats.push({ client: null, deviceId: 'bot', name: 'Bot Wizard', loadout: ['spark', 'arcaneorb', 'iceshard', 'ward', 'mend', 'lightning'], build: RANKED_BUILD, rating: 1000, ready: true });
         this.start();

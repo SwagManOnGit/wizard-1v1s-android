@@ -86,6 +86,8 @@ app.post('/api/ghost/result', (req, res) => {
 
 const httpServer = createServer(app);
 const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }) });
-gameServer.define(DUEL_ROOM, DuelRoom, { store }).filterBy(['ranked']);
+// Filtering on the code as well as the mode is the whole of friend duels: a room created with a
+// code only ever matches a join carrying the same one, and public matchmaking carries none.
+gameServer.define(DUEL_ROOM, DuelRoom, { store }).filterBy(['ranked', 'code']);
 
 httpServer.listen(PORT, () => console.log(`Wizard 1v1s server on :${PORT} (${store.counts.players} players, ${store.counts.ghosts} ghosts)`));

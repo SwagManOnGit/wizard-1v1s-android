@@ -14,8 +14,17 @@ npm run android:sync # build, then copy into app/android
 ```
 
 Individual harnesses live in `server/`: `npm run test:duel -w server` (bot duel + ghost replay
-determinism), `test:glyphs` (glyph confusion), `test:campaign` (level curve), `test:progression`
-(a report, not an assertion — read its numbers, it always exits 0).
+determinism), `test:glyphs` (glyph confusion), `test:campaign` (level curve), `test:seal` (the
+sealed apocrypha match their source), `test:progression` (a report, not an assertion — read its
+numbers, it always exits 0).
+
+`test:friend` is not in `npm test` because it needs a live server: start one with `npm run server`,
+then `npm run test:friend -w server`. It checks two clients on one code meet each other and that a
+coded room never fills with a bot.
+
+**Restarting the duel server: free the port first and check the new process bound.** `curl
+/api/health` answering proves *a* server is up, not yours — a stale process holding 2567 will serve
+old code and make a working change look broken. This has cost time twice.
 
 ## Building the Android app locally
 

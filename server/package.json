@@ -12,7 +12,8 @@
     "test:glyphs": "tsx src/glyphtest.ts",
     "test:campaign": "tsx src/campaigntest.ts",
     "test:progression": "tsx src/progressiontest.ts",
-    "test:seal": "tsx src/sealtest.ts"
+    "test:seal": "tsx src/sealtest.ts",
+    "test:friend": "tsx src/friendtest.ts"
   },
   "dependencies": {
     "colyseus": "^0.16.0",

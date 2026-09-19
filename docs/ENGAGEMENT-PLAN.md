@@ -336,9 +336,15 @@ Eased first ten levels. Daily quests. The next-goal strip. Chest odds disclosure
 Global discovery rarity and first-finder credit. Share cards. The weekly rumour. Result-screen drop
 reveal. Arena names for ranked. Streak insurance.
 
-**Phase 3 — month two onward.**
-Season pass and the cosmetic catalogue. Friend duels by code. Offline trickle. The first content
-drop of previously non-existent spells. Hub simplification informed by whatever the funnel says.
+**Phase 3 — month two onward.** *(Built, except the content drop.)*
+Season pass with titles as the cosmetic, friend duels by code, and the offline trickle are in. Hub
+simplification happened early, forced by the device: the map is collapsed by default and the rumour
+moved to the spellbook.
+
+The one part that cannot be built in advance is the content drop: its whole value is that the
+spells are **not in the shipped build**, so nothing about them can be mined. Write them into
+`shared/src/secrets.source.ts`, run `npm run seal`, and release that as an update some months after
+launch, with no patch note. Two or three is enough.
 
 **The one measurement that decides everything:** the install → first-clear → second-session funnel.
 If D1 is below 25% after the FTUE ships, stop building features and fix the first ninety seconds.

@@ -9,7 +9,8 @@ import {
   activeSetBonus, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   nextArena,
   isAttuned, isBossLevel, isChapterBoss,
-  chestOdds, openChest, requirementText, rollItem, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
+  chestOdds, makeDuelCode, normaliseDuelCode, openChest, requirementText, rollItem, rollLevelDrop, shiftColor,
+  spellStatus, spellStroke, upgradePrice, wizardLevel,
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, type Point } from '@wizard/shared';
@@ -772,6 +773,16 @@ export class UI {
     mk('Ranked duel', 'Live 1v1 against another player with a fair fixed build. Wins raise your rating.', 'FIND RANKED MATCH', 'gold', () => void this.startOnline(true));
     mk('Casual duel', 'Live 1v1 with your own spells and gear. No rating change. A bot joins if nobody is around.', 'FIND CASUAL MATCH', 'blue', () => void this.startOnline(false));
     mk('Ghost duel', 'Fight a recording of another player. Your own runs are uploaded as ghosts too.', 'FIGHT A GHOST', 'green', () => void this.startGhost());
+
+    // Friend duels: a six-character code and no account system. No bot ever fills these rooms.
+    const friend = el('div', 'card');
+    friend.append(el('div', 'name', 'Duel a friend'),
+      el('div', 'desc', 'Share a code and fight whoever types it in. No rating, no bot, your own spells and gear.'));
+    const friendRow = el('div', 'menu-row');
+    friendRow.append(btn('CREATE A CODE', 'blue', () => void this.startFriendDuel(makeDuelCode())),
+      btn('ENTER A CODE', 'ghost', () => this.askForCode()));
+    friend.append(friendRow);
+    body.append(friend);
     const prac = el('div', 'card');
     prac.append(el('div', 'name', 'Practice'), el('div', 'desc', 'Offline duel against a bot. Pick your challenge.'));
     const row = el('div', 'menu-row');
@@ -784,6 +795,56 @@ export class UI {
     s.append(head, body);
     this.show('duel');
   }
+
+  /** A code to read out, held on screen until somebody types it in somewhere else. */
+  private async startFriendDuel(code: string, joining = false): Promise<void> {
+    this.openOverlay((box, close) => {
+      box.append(el('h2', '', 'YOUR CODE'), el('div', 'duel-code', code),
+        el('div', 'note', 'Give this to your friend. They tap ENTER A CODE and type it in. The room stays open for three minutes.'),
+        btn('Share it', 'blue', () => void platform.share(`Duel me in Wizard 1v1s. Code: ${code}`)),
+        btn('Cancel', 'ghost', () => { this.friendCancelled = true; close(); this.showDuelMenu(); }));
+    });
+    this.friendCancelled = false;
+    try {
+      const session = await OnlineSession.connect(this.save, false, code);
+      if (this.friendCancelled) { session.leave(); return; }
+      this.overlayDismiss?.();
+      this.startDuel(session);
+    } catch {
+      if (this.friendCancelled) return;
+      this.overlayDismiss?.();
+      // Telling somebody who just created a code to "check the code" sends them looking in the
+      // wrong place: for them the only thing that can be wrong is the connection.
+      this.openOverlay((box, close) => {
+        box.append(el('h2', '', 'NO LUCK'), el('div', 'note', joining
+          ? 'That room could not be reached. Check the code, and that your friend is still waiting.'
+          : 'Could not open a room. The duel server is unreachable right now.'), btn('OK', 'gold', close));
+      });
+    }
+  }
+
+  private askForCode(): void {
+    this.openOverlay((box, close) => {
+      box.append(el('h2', '', 'ENTER A CODE'));
+      const input = el('input', 'text-input code-input');
+      input.maxLength = 10;
+      input.placeholder = 'ABC234';
+      input.autocapitalize = 'characters';
+      box.append(input);
+      const go = btn('DUEL', 'gold big', () => {
+        const code = normaliseDuelCode(input.value);
+        if (code.length < 6) { input.classList.add('bad'); return; }
+        close();
+        void this.startFriendDuel(code, true);
+      });
+      input.addEventListener('input', () => input.classList.remove('bad'));
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
+      box.append(go, btn('Cancel', 'ghost', close));
+      setTimeout(() => input.focus(), 50);
+    });
+  }
+
+  private friendCancelled = false;
 
   private async startOnline(ranked: boolean): Promise<void> {
     this.openOverlay((box) => { box.append(el('h2', '', ranked ? 'RANKED' : 'CASUAL'), el('div', 'note', 'Connecting to the duel server...')); });
