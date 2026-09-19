@@ -218,6 +218,43 @@ def ball(r, segs=8, rings=5, squash=1.0):
     return verts, faces
 
 
+def arc_shell(profile, a0, a1, segs, thickness):
+    """
+    A band of a solid of revolution that does not go all the way round: an outer wall, an inner
+    wall and caps at both open ends. Used for hair, which has to wrap the back and sides of the
+    head and stop before the face.
+
+    profile: [(radius, z)] bottom to top. Winding is left to recalc_face_normals.
+    """
+    rows, w = len(profile), segs + 1
+
+    def wall(radial):
+        out = []
+        for r, z in profile:
+            for i in range(w):
+                a = a0 + (a1 - a0) * i / segs
+                rr = max(0.01, r - radial)
+                out.append((math.cos(a) * rr, math.sin(a) * rr, z))
+        return out
+
+    verts = wall(0.0) + wall(thickness)
+    inner = rows * w
+    faces = []
+    for k in range(rows - 1):
+        for i in range(segs):
+            o, p = k * w + i, (k + 1) * w + i
+            faces.append([o, o + 1, p + 1, p])                                        # outside
+            faces.append([inner + p, inner + p + 1, inner + o + 1, inner + o])        # inside
+        for i in (0, segs):                                                           # the two ends
+            o, p = k * w + i, (k + 1) * w + i
+            faces.append([o, p, inner + p, inner + o])
+    for i in range(segs):                                                             # bottom, top
+        faces.append([inner + i, inner + i + 1, i + 1, i])
+        t = (rows - 1) * w + i
+        faces.append([t, t + 1, inner + t + 1, inner + t])
+    return verts, faces
+
+
 def torus(r_major, r_minor, seg=12, side=6, squash=1.0):
     verts, faces = [], []
     for i in range(seg):
@@ -275,12 +312,10 @@ def build():
         v, f = star(5, 0.14, 0.062, 0.05)
         add_mesh(f'Star{side}', v, f, 'Trim', root, loc=(x, -0.58, 0.72), rot=(0, 0, 0))
 
-    # -------- shoulders and a modest standing collar behind the neck.
+    # -------- shoulders and a gold band at the neck. A standing collar stood here too; from behind
+    # it read as a disc stuck to the back of the head, and the hair fills that gap better.
     v, f = ball(0.47, 10, 4, squash=0.55)
     add_mesh('Shoulders', v, f, 'Robe', root, loc=(0, 0, 1.58))
-    # Tall enough to cover the back of the neck, which the hat brim leaves bare from behind.
-    v, f = tube([(0.42, 1.56), (0.49, 2.00)], 10, phase=math.pi / 10)
-    add_mesh('Collar', v, f, 'Cape', root, loc=(0, 0.05, 0), rot=(-0.24, 0, 0))
     v, f = tube([(0.50, 1.53), (0.50, 1.63)], 10, phase=math.pi / 10)
     add_mesh('CollarTrim', v, f, 'Trim', root, loc=(0, 0.03, 0), rot=(-0.14, 0, 0))
 
@@ -303,6 +338,18 @@ def build():
     # -------- head. Much larger than the old one: the reference is about three heads tall.
     v, f = ball(0.42, 10, 6, squash=0.95)
     add_mesh('Head', v, f, 'Skin', root, loc=(0, 0, 1.98))
+
+    # Hair around the back and sides, hugging the skull and stopping short of the face. It shares
+    # the Beard material, so whatever colour the player picks for the beard, the hair matches.
+    v, f = arc_shell(
+        [(0.35, 1.70), (0.44, 1.80), (0.465, 1.96), (0.44, 2.10), (0.34, 2.24)],
+        math.radians(-42), math.radians(222), 14, 0.075,
+    )
+    add_mesh('Hair', v, f, 'Beard', root, loc=(0, 0, 0))
+    # Two locks in front of the ears, to tie the hair into the beard rather than end at the jaw.
+    for side, x in (('L', -0.40), ('R', 0.40)):
+        v, f = ball(0.13, 6, 4, squash=1.35)
+        add_mesh(f'Lock{side}', v, f, 'Beard', root, loc=(x, -0.08, 1.80))
     v, f = ball(0.135, 6, 4, squash=1.20)
     add_mesh('Nose', v, f, 'Skin', root, loc=(0, -0.40, 1.95))
     for side, x in (('0', -0.155), ('1', 0.155)):
@@ -613,7 +660,7 @@ def preview(out_dir, hat='Pointy', staff='Crystal'):
     scene.camera = cam
 
     os.makedirs(out_dir, exist_ok=True)
-    for tag, ang in (('front', 0.0), ('three-quarter', 0.85)):
+    for tag, ang in (('front', 0.0), ('three-quarter', 0.85), ('back', math.pi)):
         d, h, aim = 7.6, 2.6, 1.45
         cam.location = (math.sin(ang) * d, -math.cos(ang) * d, h)
         cam.rotation_euler = Euler((math.pi / 2 - math.atan2(h - aim, d), 0, ang))
