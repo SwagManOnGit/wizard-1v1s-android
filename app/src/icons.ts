@@ -109,7 +109,8 @@ const UPGRADE: Record<string, Painter> = {
 
 export type UiIconName =
   | 'sword' | 'swords' | 'boot' | 'skull' | 'gem' | 'chest' | 'eye' | 'heart' | 'coin'
-  | 'trophy' | 'medal' | 'target' | 'scroll' | 'hourglass' | 'flame' | 'ribbon' | 'spark' | 'book';
+  | 'trophy' | 'medal' | 'target' | 'scroll' | 'hourglass' | 'flame' | 'ribbon' | 'spark' | 'book'
+  | 'ghost' | 'link' | 'shirt';
 
 const UI: Record<UiIconName, Painter> = {
   sword(g, s) {
@@ -249,6 +250,34 @@ const UI: Record<UiIconName, Painter> = {
     g.fillRect(s * 0.27, s * 0.3, s * 0.15, s * 0.05); g.fillRect(s * 0.27, s * 0.42, s * 0.15, s * 0.05);
     g.fillRect(s * 0.58, s * 0.3, s * 0.15, s * 0.05); g.fillRect(s * 0.58, s * 0.42, s * 0.15, s * 0.05);
   },
+  // A ghost duel is a recording of somebody who is not here, so: a sheet with a ragged hem.
+  ghost(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath(); g.arc(s * 0.5, s * 0.44, s * 0.3, Math.PI, 0); g.lineTo(s * 0.8, s * 0.86);
+    for (let i = 0; i < 3; i++) {
+      const x = s * (0.8 - i * 0.2);
+      g.lineTo(x - s * 0.1, s * 0.72); g.lineTo(x - s * 0.2, s * 0.86);
+    }
+    g.closePath(); g.fill();
+    g.fillStyle = '#1a1030';
+    g.fillRect(s * 0.36, s * 0.38, s * 0.1, s * 0.12); g.fillRect(s * 0.54, s * 0.38, s * 0.1, s * 0.12);
+  },
+  // Two links of chain: the shared code that joins one player to another. Drawn as rings rather
+  // than rectangles, which at this size read as a domino.
+  link(g, s, c) {
+    g.strokeStyle = c; g.lineWidth = s * 0.11;
+    g.beginPath(); g.arc(s * 0.35, s * 0.5, s * 0.22, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(s * 0.65, s * 0.5, s * 0.22, 0, Math.PI * 2); g.stroke();
+  },
+  shirt(g, s, c) {
+    g.fillStyle = c;
+    g.beginPath();
+    g.moveTo(s * 0.5, s * 0.16); g.lineTo(s * 0.32, s * 0.22); g.lineTo(s * 0.12, s * 0.38); g.lineTo(s * 0.24, s * 0.5);
+    g.lineTo(s * 0.24, s * 0.86); g.lineTo(s * 0.76, s * 0.86); g.lineTo(s * 0.76, s * 0.5); g.lineTo(s * 0.88, s * 0.38);
+    g.lineTo(s * 0.68, s * 0.22); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(s * 0.47, s * 0.22, s * 0.06, s * 0.62);
+    g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(s * 0.3, s * 0.3, s * 0.1, s * 0.1);
+  },
 };
 
 export function uiIcon(name: UiIconName, size = 24, tint = '#ffd23f'): HTMLCanvasElement {
@@ -276,6 +305,39 @@ export function rewardIcon(kind: string, size = 24): HTMLCanvasElement {
   if (kind === 'chest') return uiIcon('chest', size, '#ffd23f');
   if (kind === 'title') return uiIcon('ribbon', size, '#ff4fd8');
   return uiIcon('coin', size, '#ffcc33');
+}
+
+/**
+ * Awards, by what the award is for. Keyed on the id prefix because the ids already group that way,
+ * so a new level_* or duel_* award inherits the right picture without touching this.
+ */
+export function achievementIcon(id: string, size = 24): HTMLCanvasElement {
+  const rules: [RegExp, UiIconName, string][] = [
+    [/^level_/, 'trophy', '#ffcc33'],
+    [/^boss_/, 'skull', '#d0a0ff'],
+    [/^(first_win|wins_)/, 'sword', '#ff9a9a'],
+    [/^secret_/, 'eye', '#ff4fd8'],
+    [/^spells_/, 'book', '#ffd23f'],
+    [/^mythic_gear/, 'gem', '#ff7a3d'],
+    [/^mythic_/, 'spark', '#c77dff'],
+    [/^elements_/, 'flame', '#ff8a2a'],
+    [/^(fullset|gear_full)/, 'shirt', '#8ef3ff'],
+    [/^drops_/, 'chest', '#ffd23f'],
+    [/^dodge_/, 'boot', '#8ef3ff'],
+    [/^cast_/, 'scroll', '#ffe066'],
+    [/^meteor_/, 'flame', '#ff6a3d'],
+    [/^streak_/, 'hourglass', '#ffcc33'],
+    [/^rating_/, 'medal', '#ffcc33'],
+    [/^duel_/, 'swords', '#ff8f8f'],
+  ];
+  const hit = rules.find(r => r[0].test(id));
+  return uiIcon(hit ? hit[1] : 'medal', size, hit ? hit[2] : '#ffcc33');
+}
+
+/** Gold, silver and bronze for the top three; everybody else gets the plain number. */
+export function placeIcon(place: number, size = 26): HTMLCanvasElement | null {
+  const tint = ['#ffcc33', '#d8dce8', '#c98b4a'][place - 1];
+  return tint ? uiIcon('medal', size, tint) : null;
 }
 
 /**

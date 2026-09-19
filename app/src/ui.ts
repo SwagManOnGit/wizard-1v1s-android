@@ -14,7 +14,7 @@ import {
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
 } from '@wizard/shared';
 import { drawGlyph, pointAlong, spellStroke as strokeOf, type Point } from '@wizard/shared';
-import { ICON_PX, elementIcon, gearIcon, makePixelCanvas, questIcon, rewardIcon, slotIcon, uiIcon, upgradeIcon, wizardPortrait, type UiIconName } from './icons';
+import { ICON_PX, achievementIcon, elementIcon, gearIcon, makePixelCanvas, placeIcon, questIcon, rewardIcon, slotIcon, uiIcon, upgradeIcon, wizardPortrait, type UiIconName } from './icons';
 import { Recognizer } from '@wizard/shared';
 import { attune, attunement, equipItem, grantItem, ownedInSlot, playerLook, setSummary, type GrantResult } from './features/collection';
 import { computeStats, type SaveData } from './save';
@@ -781,41 +781,52 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'DUELS'), el('div', 'coins', fmt(this.save.coins)));
     const body = el('div', 'shop-body');
-    const me = el('div', 'card');
+    const me = el('div', 'card duel-me');
     const st = this.save.stats;
-    me.append(el('div', 'name', this.save.name), el('div', 'arena-line', this.arenaLine()),
-      el('div', 'desc', `Online ${st.duelWins}W ${st.duelLosses}L · Ghosts ${st.ghostWins}W ${st.ghostLosses}L`));
+    me.append(wizardPortrait(64));
+    const mine = el('div', 'duel-me-words');
+    mine.append(el('div', 'name', this.save.name), el('div', 'arena-line', this.arenaLine()));
+    me.append(mine);
+    const record = el('div', 'duel-record');
+    const tally = (icon: UiIconName, tint: string, text: string): HTMLElement => {
+      const box = el('div', 'level-stat');
+      box.append(uiIcon(icon, 20, tint), el('span', '', text));
+      return box;
+    };
+    record.append(tally('swords', '#ff8f8f', `${st.duelWins}W ${st.duelLosses}L`),
+      tally('ghost', '#d8dce8', `${st.ghostWins}W ${st.ghostLosses}L`));
+    mine.append(record);
     const status = el('div', 'note', 'Checking the duel server...');
-    me.append(status);
-    body.append(me);
+    body.append(me, status);
     void api.health().then(h => { status.textContent = h ? `Server online · ${h.players} wizards · ${h.ghosts} ghosts` : 'Server unreachable: online and ghost duels need a connection. Practice still works.'; });
 
-    const mk = (title: string, desc: string, label: string, cls: string, run: () => void): void => {
+    const mk = (icon: UiIconName, tint: string, title: string, desc: string, label: string, cls: string, run: () => void): void => {
       const c = el('div', 'card');
-      c.append(el('div', 'name', title), el('div', 'desc', desc), btn(label, cls, run));
+      c.append(this.cardHead(icon, tint, title, desc), btn(label, cls, run));
       body.append(c);
     };
-    mk('Ranked duel', 'Live 1v1 against another player with a fair fixed build. Wins raise your rating.', 'FIND RANKED MATCH', 'gold', () => void this.startOnline(true));
-    mk('Casual duel', 'Live 1v1 with your own spells and gear. No rating change. A bot joins if nobody is around.', 'FIND CASUAL MATCH', 'blue', () => void this.startOnline(false));
-    mk('Ghost duel', 'Fight a recording of another player. Your own runs are uploaded as ghosts too.', 'FIGHT A GHOST', 'green', () => void this.startGhost());
+    mk('trophy', '#ffcc33', 'Ranked duel', 'Live 1v1 against another player with a fair fixed build. Wins raise your rating.', 'FIND RANKED MATCH', 'gold', () => void this.startOnline(true));
+    mk('swords', '#9ad8ff', 'Casual duel', 'Live 1v1 with your own spells and gear. No rating change. A bot joins if nobody is around.', 'FIND CASUAL MATCH', 'blue', () => void this.startOnline(false));
+    mk('ghost', '#b8ffc4', 'Ghost duel', 'Fight a recording of another player. Your own runs are uploaded as ghosts too.', 'FIGHT A GHOST', 'green', () => void this.startGhost());
 
     // Friend duels: a six-character code and no account system. No bot ever fills these rooms.
     const friend = el('div', 'card');
-    friend.append(el('div', 'name', 'Duel a friend'),
-      el('div', 'desc', 'Share a code and fight whoever types it in. No rating, no bot, your own spells and gear.'));
+    friend.append(this.cardHead('link', '#ffcc33', 'Duel a friend',
+      'Share a code and fight whoever types it in. No rating, no bot, your own spells and gear.'));
     const friendRow = el('div', 'menu-row');
     friendRow.append(btn('CREATE A CODE', 'blue', () => void this.startFriendDuel(makeDuelCode())),
       btn('ENTER A CODE', 'ghost', () => this.askForCode()));
     friend.append(friendRow);
     body.append(friend);
     const prac = el('div', 'card');
-    prac.append(el('div', 'name', 'Practice'), el('div', 'desc', 'Offline duel against a bot. Pick your challenge.'));
+    prac.append(this.cardHead('target', '#b8ffc4', 'Practice', 'Offline duel against a bot. Pick your challenge.'));
     const row = el('div', 'menu-row');
     row.append(btn('Easy', 'ghost', () => this.startDuel(new BotSession(this.save, 'easy'))), btn('Normal', 'ghost', () => this.startDuel(new BotSession(this.save, 'normal'))), btn('Hard', 'ghost', () => this.startDuel(new BotSession(this.save, 'hard'))));
     prac.append(row);
     body.append(prac);
     const tips = el('div', 'card');
-    tips.append(el('div', 'name', 'How duels differ'), el('div', 'desc', 'Spells chase the opponent\'s lane until halfway, then commit: dodge late. Both wizards have extra health, so read the pad, bait dodges, and save stamina.'));
+    tips.append(this.cardHead('book', '#ffcc33', 'How duels differ'));
+    tips.append(el('div', 'desc', 'Spells chase the opponent\'s lane until halfway, then commit: dodge late. Both wizards have extra health, so read the pad, bait dodges, and save stamina.'));
     body.append(tips);
     s.append(head, body);
     this.show('duel');
@@ -2561,7 +2572,7 @@ export class UI {
     const s = this.screens.ranks;
     s.innerHTML = '';
     const head = el('div', 'shop-head');
-    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'RANKINGS'), el('div', 'coins', fmt(this.save.coins)));
+    head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'RANKINGS'), this.countPill('trophy', '#ffcc33', arenaFor(this.save.rating).name));
     const tabs = el('div', 'tabs');
     const body = el('div', 'shop-body');
     const render = async (by: 'best' | 'rating'): Promise<void> => {
@@ -2574,7 +2585,11 @@ export class UI {
       if (!res.entries.length) { body.append(el('div', 'card', 'Nobody has posted a score yet. Be the first!')); return; }
       res.entries.forEach((e, i) => {
         const row = el('div', `row-card ${e.deviceId === this.save.deviceId ? 'me' : ''}`);
-        row.append(el('div', 'rank', `#${i + 1}`));
+        // Gold, silver and bronze for the podium; a number is enough for everybody below it.
+        const medal = placeIcon(i + 1, 30);
+        const place = el('div', 'rank');
+        if (medal) place.append(medal); else place.textContent = `#${i + 1}`;
+        row.append(place);
         const info = el('div', 'info');
         const nameRow = el('div', 'name-row');
         nameRow.append(el('div', 'name', e.name));
@@ -2592,8 +2607,10 @@ export class UI {
         body.append(row);
       });
     };
-    for (const [by, label] of [['best', 'Campaign'], ['rating', 'Duels']] as const) {
-      const t = el('button', 'tab', label); t.dataset.by = by;
+    for (const [by, label, icon] of [['best', 'Campaign', 'sword'], ['rating', 'Duels', 'swords']] as const) {
+      const t = el('button', 'tab');
+      t.append(uiIcon(icon, 22, '#ffcc33'), el('span', '', label));
+      t.dataset.by = by;
       t.addEventListener('click', () => { sfx.click(); void render(by); });
       tabs.append(t);
     }
@@ -2614,7 +2631,10 @@ export class UI {
       const got = this.save.achievements.includes(a.id);
       const row = el('div', `row-card ${got ? 'done' : ''}`);
       const info = el('div', 'info'); info.append(el('div', 'name', a.name), el('div', 'desc', a.desc));
-      row.append(el('div', 'rank', got ? '★' : '☆'), info, el('div', 'coins', fmt(a.coins)));
+      const mark = el('div', `award-mark ${got ? '' : 'locked'}`);
+      mark.append(achievementIcon(a.id, 34));
+      if (got) mark.append(el('span', 'award-tick', '★'));
+      row.append(mark, info, el('div', 'coins', fmt(a.coins)));
       body.append(row);
     }
     s.append(head, body);
