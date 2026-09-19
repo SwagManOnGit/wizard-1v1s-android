@@ -118,7 +118,15 @@ canvas { image-rendering: pixelated; }
 /* ---------- level select ---------- */
 #levels { background: var(--bg); }
 .levels-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
-.level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+/* The map scrolls inside itself. It used to be an unbounded list in the page flow, so bringing the
+   current level into view scrolled the whole hub and pushed the quests and the rumour off the top. */
+.level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px;
+  max-height: 38vh; overflow-y: auto; scrollbar-width: none; padding-right: 2px; }
+/* Collapsed by default: a couple of rows around the current level is what most sessions want. */
+.level-grid.collapsed { max-height: 128px; }
+.chapter-row.hidden { display: none; }
+.map-toggle { width: 100%; margin-top: 6px; }
+.level-grid::-webkit-scrollbar { display: none; }
 .level-tile { position: relative; height: 58px; border: 3px solid var(--ink); background: var(--win2); color: var(--text); font-size: 26px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   box-shadow: inset -3px -3px 0 var(--win), inset 3px 3px 0 var(--win3); text-shadow: 2px 2px 0 var(--ink); }
 .level-tile i { font-style: normal; font-size: 12px; letter-spacing: 1px; color: var(--red); }
@@ -376,6 +384,12 @@ canvas { image-rendering: pixelated; }
 .goal-strip span { flex: 1; min-width: 0; }
 .goal-strip em { flex: none; font-style: normal; font-size: 24px; color: var(--gold); }
 .goal-strip:active { background: var(--blue); }
+
+.discovery-rank { text-align: center; font-size: 18px; letter-spacing: 1px; }
+.rarity-line { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; font-size: 15px; color: var(--muted); }
+.card.rumour { border-color: var(--magenta); }
+.rumour-head { font-size: 18px; letter-spacing: 2px; color: var(--magenta); }
+.rumour-text { font-size: 22px; color: var(--text); font-style: italic; margin: 2px 0; }
 
 /* ---------- daily quests ---------- */
 .card.quests { gap: 2px; }

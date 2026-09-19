@@ -16,6 +16,11 @@ interface Db {
   ghosts: (GhostTape & { id: string; deviceId: string; plays: number; beaten: number })[];
   devices: Record<string, DeviceRecord>;
   events: Record<string, number>;
+  /**
+   * Who has found what. `who` exists to make a repeat report idempotent; it is the one part of this
+   * store that grows with players times spells, and the first thing to move to a real database.
+   */
+  discoveries: Record<string, { count: number; first: { name: string; at: number } | null; who: Record<string, 1> }>;
 }
 
 /** The funnel, in order. Every one of these is a step a player can fall out of. */
@@ -24,12 +29,12 @@ export const FUNNEL_STEPS = ['install', 'battle_start', 'ftue_done', 'level_clea
 const MAX_GHOSTS = 2000;
 
 export class Store {
-  private db: Db = { players: {}, ghosts: [], devices: {}, events: {} };
+  private db: Db = { players: {}, ghosts: [], devices: {}, events: {}, discoveries: {} };
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private path: string) {
     try { this.db = JSON.parse(readFileSync(path, 'utf8')) as Db; } catch { /* fresh store */ }
-    this.db.players ??= {}; this.db.ghosts ??= []; this.db.devices ??= {}; this.db.events ??= {};
+    this.db.players ??= {}; this.db.ghosts ??= []; this.db.devices ??= {}; this.db.events ??= {}; this.db.discoveries ??= {};
   }
 
   private flush(): void {
@@ -51,6 +56,39 @@ export class Store {
     const p = this.player(deviceId, name);
     if (best > p.best) { p.best = best; p.updatedAt = Date.now(); this.flush(); }
     return p;
+  }
+
+  // ---- discoveries ----------------------------------------------------------------
+  /** Records that this wizard found this spell, and says where they came in. Idempotent. */
+  recordDiscovery(deviceId: string, name: string, spellId: string): { rank: number; holders: number; first: string | null } {
+    // Count the device here too. The denominator for "x% of wizards know this" is the device
+    // table, and a player who turned analytics off would otherwise be a holder without ever being
+    // a player, which can push a percentage past 100.
+    const now = Date.now();
+    const dev = (this.db.devices[deviceId] ??= { first: now, last: now, sessions: 0, steps: { install: now } });
+    dev.last = now;
+    const d = (this.db.discoveries[spellId] ??= { count: 0, first: null, who: {} });
+    let rank = 0;
+    if (!d.who[deviceId]) {
+      d.who[deviceId] = 1;
+      d.count++;
+      rank = d.count;
+      d.first ??= { name: name.slice(0, 16) || 'A wizard', at: Date.now() };
+      this.flush();
+    } else {
+      // A repeat report from a reinstall: they still know it, they are just not new.
+      rank = 0;
+    }
+    return { rank, holders: d.count, first: d.first?.name ?? null };
+  }
+
+  /** How many know each spell, for the "0.4% of wizards know this" line in the codex. */
+  discoveryBoard(): { players: number; spells: Record<string, { holders: number; first: string | null }> } {
+    const spells: Record<string, { holders: number; first: string | null }> = {};
+    for (const [id, d] of Object.entries(this.db.discoveries)) {
+      spells[id] = { holders: d.count, first: d.first?.name ?? null };
+    }
+    return { players: Math.max(1, Object.keys(this.db.devices).length), spells };
   }
 
   // ---- telemetry ------------------------------------------------------------------

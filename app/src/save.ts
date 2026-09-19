@@ -25,6 +25,8 @@ export interface SaveData {
   best: number;
   /** How far through the scripted first duel: 0 not started, 1 in it, 2 done, 3 codex card seen. */
   ftue: number;
+  /** The week key of the last rumour the player has actually looked at. */
+  rumourSeen: string;
   /** Spell ids the player has actually drawn at least once. */
   discovered: string[];
   /** Successful casts per spell, which is what fades that spell's guide off the draw pad. */
@@ -66,7 +68,7 @@ function randomName(): string { return `${NAMES[Math.floor(Math.random() * NAMES
 
 export function defaultSave(): SaveData {
   return {
-    v: 3, coins: 0, level: 1, best: 0, ftue: 0,
+    v: 3, coins: 0, level: 1, best: 0, ftue: 0, rumourSeen: '',
     // A new wizard knows the four starters but carries only Spark: the rest are handed over one
     // per level, so the first four fights each teach exactly one new thing.
     discovered: [...STARTING_SPELLS], unseen: [], loadout: [STARTING_SPELLS[0]], practice: {},
@@ -101,6 +103,7 @@ export function parseSave(raw: string | null): SaveData {
     d.coins = int(o.coins, 0);
     d.level = int(o.level, 1, 1);
     d.ftue = int(o.ftue, 0);
+    d.rumourSeen = str(o.rumourSeen, '');
     d.best = int(o.best, 0);
 
     // v1/v2 stored bought spells in `owned`; those the player had are treated as already discovered.

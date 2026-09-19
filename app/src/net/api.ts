@@ -1,5 +1,5 @@
 // Small HTTP client for the duel server. Every call tolerates the server being offline.
-import type { GhostTape, LeaderboardEntry, ProfileResponse } from '@wizard/shared';
+import type { DiscoveryBoard, DiscoveryResponse, GhostTape, LeaderboardEntry, ProfileResponse } from '@wizard/shared';
 import { CONFIG } from '../platform/config';
 
 async function call<T>(path: string, init?: RequestInit, timeoutMs = 6000): Promise<T | null> {
@@ -24,5 +24,8 @@ export const api = {
   postGhost: (deviceId: string, tape: GhostTape) => call<{ ok: boolean; id: string }>('/api/ghost', { method: 'POST', body: JSON.stringify({ deviceId, tape }) }),
   randomGhost: (deviceId: string, rating: number) => call<GhostTape & { id: string }>(`/api/ghost/random?deviceId=${encodeURIComponent(deviceId)}&rating=${rating}`),
   ghostResult: (deviceId: string, ghostId: string, won: boolean) => call<{ ok: boolean }>('/api/ghost/result', { method: 'POST', body: JSON.stringify({ deviceId, ghostId, won }) }),
+  postDiscovery: (deviceId: string, name: string, spellId: string) =>
+    call<DiscoveryResponse>('/api/discovery', { method: 'POST', body: JSON.stringify({ deviceId, name, spellId }) }, 4000),
+  discoveries: () => call<DiscoveryBoard>('/api/discoveries', undefined, 4000),
   wsUrl: (): string => CONFIG.serverUrl.replace(/^http/, 'ws'),
 };

@@ -29,6 +29,18 @@ app.post('/api/events', (req, res) => {
 
 app.get('/api/funnel', (_req, res) => res.json(store.funnel()));
 
+// A spell has been drawn for the first time. The rank this returns is what the discovery card
+// brags about, and it is decided here rather than on the client for obvious reasons.
+app.post('/api/discovery', (req, res) => {
+  const { deviceId, name, spellId } = (req.body ?? {}) as { deviceId?: string; name?: string; spellId?: string };
+  if (typeof deviceId !== 'string' || typeof spellId !== 'string') return res.status(400).json({ ok: false });
+  const r = store.recordDiscovery(deviceId.slice(0, 64), typeof name === 'string' ? name : 'A wizard', spellId.slice(0, 40));
+  const board = store.discoveryBoard();
+  return res.json({ ...r, players: board.players });
+});
+
+app.get('/api/discoveries', (_req, res) => res.json(store.discoveryBoard()));
+
 app.get('/api/leaderboard', (req, res) => {
   const by = req.query.by === 'rating' ? 'rating' : 'best';
   res.json({ by, entries: store.leaderboard(by) });

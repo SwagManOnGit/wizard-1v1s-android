@@ -24,6 +24,7 @@ import { analytics } from './net/analytics';
 import { ACHIEVEMENTS, evaluateAchievements } from './features/achievements';
 import { challengeAvailable, claimDaily, dailyChallenge, markChallengeDone, nextRewardTime, type Challenge } from './features/daily';
 import { canClaimQuests, ensureQuests, questChest, questsToday } from './features/quests';
+import { weekKey, weeklyRumour } from './features/rumour';
 import { BotSession, GhostSession, OnlineSession, fetchGhost, type DuelMode, type DuelSession } from './duel/session';
 import type { BattleLike } from './duel/view';
 
@@ -118,6 +119,19 @@ function leniency(best: number): number {
 }
 
 const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+/** Rarity as a player-readable share, never rounding a real discovery down to "0%". */
+function sharePercent(holders: number, players: number): string {
+  const pct = (holders / Math.max(1, players)) * 100;
+  if (pct >= 10) return `${Math.round(pct)}%`;
+  if (pct >= 1) return `${pct.toFixed(1)}%`;
+  return `${Math.max(0.1, Number(pct.toFixed(2)))}%`;
+}
 
 /**
  * The per-item odds line. Google Play will not pass a build that sells randomised items without
@@ -231,8 +245,16 @@ export class UI {
   private battleStartedAt = 0;
   private ftueTimeScale = 1;
   private pendingGift: SpellDef | null = null;
+  /** How many wizards know each spell, fetched when the spellbook opens. Null until it answers. */
+  private board: { players: number; spells: Record<string, { holders: number; first: string | null }> } | null = null;
   /** Which block of fifty levels the map is showing. -1 until the first render picks one. */
   private chapter = -1;
+  /**
+   * The map opens on demand. Collapsed it is a couple of rows around the current level, which is
+   * what most sessions want; the quests, the rumour and the challenge are all competing for the
+   * same screen, and the full chapter pushed them off it.
+   */
+  private mapOpen = false;
   private loopId = 0;
   private lastT = 0;
   private paused = false;
@@ -460,6 +482,30 @@ export class UI {
     if (this.chapter > reached) this.chapter = reached;
     const chapterRow = el('div', 'chapter-row');
     const grid = el('div', 'level-grid');
+    const mapToggle = btn('', 'map-toggle ghost small', () => {
+      this.mapOpen = !this.mapOpen;
+      applyMapState();
+      scrollToTile();
+    });
+    const applyMapState = (): void => {
+      grid.classList.toggle('collapsed', !this.mapOpen);
+      chapterRow.classList.toggle('hidden', !this.mapOpen);
+      mapToggle.textContent = this.mapOpen ? 'Hide the map' : `Open the map · chapter ${this.chapter + 1} of ${CHAPTERS}`;
+    };
+    /**
+     * Brings the current level into view inside the map, and only inside the map: the grid is its
+     * own scroll container so this can never move the hub. Measured on the second frame because the
+     * grid takes its height from the viewport, and on the first frame that height is not settled.
+     */
+    const scrollToTile = (): void => {
+      const tile = tiles.get(this.pickedLevel);
+      if (!tile) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const gb = grid.getBoundingClientRect(), tb = tile.getBoundingClientRect();
+        const want = grid.scrollTop + (tb.top - gb.top) - (gb.height - tb.height) / 2;
+        grid.scrollTop = Math.max(0, Math.min(want, grid.scrollHeight - grid.clientHeight));
+      }));
+    };
     const info = el('div', 'level-info');
     const playBtn = btn('BATTLE', 'gold big', () => this.startBattle(this.pickedLevel, false));
     const tiles = new Map<number, HTMLElement>();
@@ -496,9 +542,11 @@ export class UI {
       const active = chapterRow.querySelector('.chapter.active') as HTMLElement | null;
       if (active) chapterRow.scrollLeft = active.offsetLeft - chapterRow.clientWidth / 2 + active.offsetWidth / 2;
       renderInfo();
+      applyMapState();
+      scrollToTile();
     };
     renderChapter();
-    body.append(chapterRow, grid);
+    body.append(chapterRow, grid, mapToggle);
 
     const foot = el('div', 'hub-foot');
     const duelRow = el('div', 'menu-row');
@@ -509,15 +557,6 @@ export class UI {
 
     s.append(bar, goalStrip, body, foot);
     this.show('menu');
-    // Only scroll when the level is actually off screen. Centring it unconditionally pushed the
-    // daily quests off the top of the hub, so a new player never saw them.
-    const tile = tiles.get(this.pickedLevel);
-    if (tile) requestAnimationFrame(() => {
-      const box = body.getBoundingClientRect(), r = tile.getBoundingClientRect();
-      // 'nearest' rather than 'center': centring a tile that is only just below the fold scrolls
-      // far enough to push the quests off the top of the hub. This moves the minimum needed.
-      if (r.top < box.top || r.bottom > box.bottom) tile.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
     if (!this.dailyChecked) { this.dailyChecked = true; this.checkDaily(); }
   }
 
@@ -552,6 +591,9 @@ export class UI {
     }
     if (canClaimQuests(save)) {
       return { text: `All three quests done: claim your ${questChest(save).name}`, go: () => this.showMenu() };
+    }
+    if (weeklyRumour(save) && save.rumourSeen !== weekKey()) {
+      return { text: 'A new rumour is going round', go: () => this.showSpellbook('known') };
     }
     const element = BUYABLE_ELEMENTS.filter(e => !save.elements.includes(e.id)).sort((a, b) => a.price - b.price)[0];
     if (element && save.coins >= element.price) {
@@ -1168,14 +1210,27 @@ export class UI {
     if (this.save.settings.haptics) platform.haptic('success');
     sfx.win();
     this.arena?.flashDiscovery(ELEMENT_BY_ID[spell.element].color);
-    this.showDiscovery(spell);
+    const card = this.showDiscovery(spell);
+    // Tell the world, and say where they came in. The server decides the rank, not the client.
+    void api.postDiscovery(this.save.deviceId, this.save.name, spell.id).then(r => {
+      if (!r || !card.isConnected) return;
+      const line = r.rank === 1 ? 'You are the FIRST wizard in the world to draw this'
+        : r.rank > 0 && r.rank <= 100 ? `The ${ordinal(r.rank)} wizard in the world to draw this`
+        : r.first ? `${sharePercent(r.holders, r.players)} of wizards know it · first found by ${r.first}`
+        : null;
+      if (line) {
+        const rank = el('div', 'discovery-rank', line);
+        rank.style.color = ELEMENT_BY_ID[spell.element].color;
+        card.insertBefore(rank, card.querySelector('.btn'));
+      }
+    });
   }
 
   /**
    * The in-game notification for a new spell: a card that slides over the arena for a few seconds
    * without pausing the fight, so the moment lands but the duel carries on.
    */
-  private showDiscovery(spell: SpellDef): void {
+  private showDiscovery(spell: SpellDef): HTMLElement {
     const elDef = ELEMENT_BY_ID[spell.element];
     const card = el('div', 'discovery frame');
     card.style.borderColor = elDef.color;
@@ -1190,9 +1245,31 @@ export class UI {
     info.append(sub, el('div', 'discovery-desc', spell.desc));
     row.append(info);
     card.append(header, row, el('div', 'discovery-foot', 'Added to your spellbook'));
+    card.append(btn('SHARE', 'gold small', () => this.shareSpell(spell)));
     this.arenaOverlay.append(card);
-    setTimeout(() => card.classList.add('out'), 3600);
-    setTimeout(() => card.remove(), 4200);
+    // Longer than the old four seconds: there is a rank line and a share button to read now.
+    setTimeout(() => card.classList.add('out'), 6200);
+    setTimeout(() => card.remove(), 6800);
+    return card;
+  }
+
+  /**
+   * The share card, which is the cheapest user acquisition this game will ever get. The glyph is
+   * deliberately not described: the whole point is that the reader has to ask what the shape is.
+   */
+  private shareSpell(spell: SpellDef): void {
+    const rare = this.board?.spells[spell.id];
+    const rarity = rare && this.board ? ` Only ${sharePercent(rare.holders, this.board.players)} of wizards know it.` : '';
+    const secret = spell.secret ? ' It is not in the codex at all.' : '';
+    void platform.share(`I found ${spell.name} in Wizard 1v1s — a ${TIER_NAMES[spell.tier]} ${ELEMENT_BY_ID[spell.element].name} spell.${secret}${rarity} Can you work out the sign? ${CONFIG.storeUrl}`);
+  }
+
+  /** Pulls the rarity board once per spellbook visit; the UI works fine without it. */
+  private async loadBoard(): Promise<void> {
+    const b = await api.discoveries();
+    if (!b) return;
+    this.board = b;
+    if (this.screens.spellbook.classList.contains('active')) this.showSpellbook(this.spellbookTab);
   }
 
   private finishStroke(): void {
@@ -1773,10 +1850,22 @@ export class UI {
    */
   showSpellbook(tab: SpellbookTab = this.spellbookTab): void {
     this.spellbookTab = tab;
+    if (!this.board) void this.loadBoard();
     // Opening the book is what clears the NEW badge.
     if (this.save.unseen.length) { this.save.unseen = []; this.commit(); }
     if (tab === 'known') this.renderKnownSpells();
     else this.renderCodex();
+  }
+
+  /** One cryptic line a week about a spell nobody has been told exists. */
+  private rumourCard(): HTMLElement | null {
+    const rumour = weeklyRumour(this.save);
+    if (!rumour) return null;
+    if (this.save.rumourSeen !== rumour.week) { this.save.rumourSeen = rumour.week; this.commit(); }
+    const card = el('div', 'card rumour');
+    card.append(el('div', 'rumour-head', 'THIS WEEK THEY SAY'), el('div', 'rumour-text', `"${rumour.text}"`),
+      el('div', 'note faint', 'Some spells were never written down. This is one of them.'));
+    return card;
   }
 
   private renderKnownSpells(): void {
@@ -1798,6 +1887,8 @@ export class UI {
     mk('codex', `Codex ${prog.total}`);
 
     const body = el('div', 'shop-body');
+    const rumour = this.rumourCard();
+    if (rumour) body.append(rumour);
     const title = el('div', 'section-title');
     title.innerHTML = `Loadout <small>${this.save.loadout.length} / ${stats.slots} slots. Only equipped spells can be cast in battle.</small>`;
     body.append(title);
@@ -1825,6 +1916,8 @@ export class UI {
         const meta = el('div', 'meta');
         meta.innerHTML = `<span>${sp.cost ? `${sp.cost} mana` : 'no mana'}</span><span>${sp.cooldown ? `${sp.cooldown}s cd` : ''}</span>`;
         card.append(meta);
+        const rarity = this.rarityLine(sp);
+        if (rarity) card.append(rarity);
         if (equipped) {
           const b = btn('Unequip', 'ghost', () => { this.save.loadout = this.save.loadout.filter(id => id !== sp.id); this.commit(); this.showSpellbook('known'); });
           b.disabled = this.save.loadout.length <= 1;
@@ -1982,6 +2075,17 @@ export class UI {
     }
     s.append(head, body);
     this.show('gear');
+  }
+
+  /** "0.4% of wizards know this", once the board has answered. A private moment made public. */
+  private rarityLine(spell: SpellDef): HTMLElement | null {
+    const stat = this.board?.spells[spell.id];
+    if (!stat || !this.board) return null;
+    const row = el('div', 'rarity-line');
+    const who = stat.first ? ` · first found by ${stat.first}` : '';
+    row.append(el('span', '', `${sharePercent(stat.holders, this.board.players)} of wizards know this${who}`),
+      btn('Share', 'ghost small', () => this.shareSpell(spell)));
+    return row;
   }
 
   private gearCard(item: EquipDef, equipped: boolean): HTMLElement {

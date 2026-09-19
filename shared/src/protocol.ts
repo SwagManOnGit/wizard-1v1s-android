@@ -3,6 +3,24 @@ import type { FighterIndex, PvpEvent, PvpSnapshot } from './pvp';
 import type { Build } from './stats';
 import type { GhostTape } from './ghost';
 
+/** What the server says back when a spell is reported found. */
+export interface DiscoveryResponse {
+  /** Where this wizard came in: 1 is the first person in the world to draw it. */
+  rank: number;
+  /** How many wizards know it now. */
+  holders: number;
+  /** How many wizards the server has ever seen, so the client can work out a percentage. */
+  players: number;
+  /** Who got there first, if anybody has. */
+  first: string | null;
+}
+
+/** The whole board, for the spellbook: spell id to how many know it and who was first. */
+export interface DiscoveryBoard {
+  players: number;
+  spells: Record<string, { holders: number; first: string | null }>;
+}
+
 export const PROTOCOL_VERSION = 1;
 export const DUEL_ROOM = 'duel';
 export const TICK_RATE = 30;
