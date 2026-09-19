@@ -64,6 +64,7 @@ function lookFromName(name: string): WizardLook {
     skin: SKIN_TONES[h % SKIN_TONES.length].color,
     beardColor: BEARD_COLORS[(h >>> 3) % BEARD_COLORS.length].color,
     boots: shiftColor('#5c3a1e', ((h >>> 5) % 4) * 0.03),
+    girth: 0.88 + ((h >>> 7) % 32) / 32 * 0.3, height: 0.94 + ((h >>> 11) % 32) / 32 * 0.16,
     hatStyle: HAT_STYLES[h % HAT_STYLES.length], staffStyle: STAFF_STYLES[h % STAFF_STYLES.length],
     beard: h % 3 !== 0, cape: h % 2 === 0,
   };

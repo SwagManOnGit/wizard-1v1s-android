@@ -119,26 +119,78 @@ function romanish(n: number): string {
 }
 
 // ---- looks and stages -----------------------------------------------------------
-const SKINS = ['#e8c39e', '#c68a5a', '#9ad0a8', '#d0a8ff', '#a0a8b8', '#f0d0b0'];
-const TRIMS = ['#ffd23f', '#e8e8ff', '#ff9a5a', '#7df9ff'];
 
-/** A deterministic outfit per level so no two neighbouring wizards look alike. */
+// Wizards are not all people. Half of these are human tones and half are not, because "another
+// wizard in a slightly different blue" is the thing that makes a tower of five hundred fights blur.
+const SKINS = [
+  '#f2d9c4', '#e8c39e', '#c9a077', '#b07d4f', '#8a5a36', '#5e3a24',
+  '#9ad0a8', '#d0a8ff', '#a0a8b8', '#86a86a', '#c8b0d8', '#7fc4c0',
+];
+const TRIMS = ['#ffd23f', '#e8e8ff', '#ff9a5a', '#7df9ff', '#ff6ad5', '#b8ff6a', '#ffffff', '#2a2036'];
+const BOOTS = ['#5c3a1e', '#3a2a1c', '#241d28', '#6a4a2a', '#4a2030', '#2e3a44'];
+
+/**
+ * A stable pick per level. The old code indexed with (level * k) % list.length, which cycles
+ * visibly: with six skins and a stride of five you meet the same face every six levels, and the
+ * eye finds that pattern quickly. An FNV-style hash with a per-attribute salt does not.
+ */
+function pick<T>(list: readonly T[], level: number, salt: number): T {
+  return list[hashLevel(level, salt) % list.length];
+}
+
+function hashLevel(level: number, salt: number): number {
+  let h = Math.imul(2166136261 ^ salt, 16777619);
+  h = Math.imul(h ^ level, 16777619);
+  h = Math.imul(h ^ (h >>> 13), 16777619);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** The same hash as a 0..1 fraction, for the things that vary continuously rather than in steps. */
+function spread(level: number, salt: number): number {
+  return (hashLevel(level, salt) % 1024) / 1023;
+}
+
+/**
+ * How an enemy's hat relates to its robe. Keeping every hat a shade of the robe is what made a
+ * tier of fifty wizards look like one wizard fifty times; a complementary or a flat neutral hat
+ * changes the silhouette's read completely while the robe still says which tier this is.
+ */
+const HAT_RELATIONS: { hue: number; light: number }[] = [
+  { hue: 0.0, light: -0.14 },     // darker shade of the robe, the old behaviour
+  { hue: 0.0, light: 0.18 },      // lighter shade
+  { hue: 0.5, light: -0.06 },     // complementary
+  { hue: 0.33, light: 0.02 },     // a third of the way round
+  { hue: -0.33, light: -0.08 },
+  { hue: 0.08, light: -0.22 },    // nearly black
+  { hue: 0.08, light: 0.30 },     // nearly white
+  { hue: 0.16, light: 0.06 },
+];
+
+/**
+ * A deterministic outfit per level. Everything here is seeded from the level with its own salt, so
+ * two enemies a few levels apart differ in several things at once rather than in one shade of one
+ * colour. The robe keeps the tier's hue, because that is the one thing the palette has to say.
+ */
 export function enemyLook(def: EnemyDef): WizardLook {
   const L = def.level, t = def.tier;
-  const hue = ((L * 37) % 5) * 0.06 - 0.12;
-  const light = ((L * 13) % 3) * 0.05 - 0.05;
-  const hatStyle: HatStyle = def.boss ? (L % 10 === 0 ? 'crown' : 'horns') : HAT_STYLES[(L * 7 + Math.floor(L / 7)) % HAT_STYLES.length];
+  const robe = shiftColor(t.robe, spread(L, 1) * 0.16 - 0.08, spread(L, 2) * 0.26 - 0.13);
+  const rel = pick(HAT_RELATIONS, L, 3);
+  const hatStyle: HatStyle = def.boss ? (L % 10 === 0 ? 'crown' : 'horns') : pick(HAT_STYLES, L, 4);
   return {
-    robe: shiftColor(t.robe, hue, light),
-    hat: shiftColor(t.hat, hue + (L % 2 ? 0.04 : -0.04), light),
-    trim: def.boss ? '#ffd23f' : TRIMS[(L * 3) % TRIMS.length],
-    skin: SKINS[(L * 5 + Math.floor(L / 6)) % SKINS.length],
-    beardColor: BEARD_COLORS[(L * 11 + Math.floor(L / 4)) % BEARD_COLORS.length].color,
-    boots: shiftColor('#5c3a1e', ((L * 17) % 4) * 0.03, ((L * 7) % 3) * 0.04 - 0.04),
+    robe,
+    hat: shiftColor(robe, rel.hue, rel.light),
+    trim: def.boss ? '#ffd23f' : pick(TRIMS, L, 5),
+    skin: pick(SKINS, L, 6),
+    beardColor: pick(BEARD_COLORS, L, 7).color,
+    boots: pick(BOOTS, L, 8),
     hatStyle,
-    staffStyle: STAFF_STYLES[(L * 5 + 2) % STAFF_STYLES.length],
-    beard: L % 3 !== 1,
-    cape: def.boss || L % 2 === 0,
+    staffStyle: pick(STAFF_STYLES, L, 9),
+    beard: spread(L, 10) > 0.28,
+    cape: def.boss || spread(L, 11) > 0.5,
+    // Short and round through tall and spindly. Bosses are scaled up as a whole elsewhere, so this
+    // only ever changes the shape, never how big the fight looks.
+    girth: 0.86 + spread(L, 12) * 0.34,
+    height: 0.92 + spread(L, 13) * 0.2,
   };
 }
 
@@ -146,6 +198,7 @@ export function enemyLook(def: EnemyDef): WizardLook {
 export const PLAYER_LOOK: WizardLook = {
   robe: '#4a4fd0', hat: '#2e2fa8', trim: '#ffd23f', skin: DEFAULT_SKIN,
   beardColor: DEFAULT_BEARD, boots: '#5c3a1e',
+  girth: 1, height: 1,
   hatStyle: 'pointy', staffStyle: 'claw', beard: true, cape: true,
 };
 

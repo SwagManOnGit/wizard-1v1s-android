@@ -12,6 +12,8 @@ export interface WizardLook {
   robe: string; hat: string; trim: string; skin: string;
   /** The beard and the boots. The beard is the player's own choice; the boots follow the shoes. */
   beardColor: string; boots: string;
+  /** Build, as multipliers on the body: 1 is the hero's. Enemies vary; the hero never does. */
+  girth: number; height: number;
   hatStyle: HatStyle; staffStyle: StaffStyle; beard: boolean; cape: boolean;
 }
 

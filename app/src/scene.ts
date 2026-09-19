@@ -171,7 +171,7 @@ class Wizard {
   private shieldWireMat: THREE.MeshBasicMaterial;
   private hatNodes: Partial<Record<HatStyle, THREE.Object3D>> = {};
   private staffNodes: Partial<Record<StaffStyle, THREE.Object3D>> = {};
-  private beardNode: THREE.Object3D | null = null;
+  private beardNodes: THREE.Object3D[] = [];
   private capeNode: THREE.Object3D | null = null;
   readonly orb = new THREE.Object3D();
   bob = Math.random() * 6;
@@ -218,7 +218,10 @@ class Wizard {
     this.staffPivot = inst.getObjectByName('ArmPivot') ?? new THREE.Group();
     for (const [style, node] of Object.entries(HAT_NODES) as [HatStyle, string][]) { const n = inst.getObjectByName(node); if (n) this.hatNodes[style] = n; }
     for (const [style, node] of Object.entries(STAFF_NODES) as [StaffStyle, string][]) { const n = inst.getObjectByName(node); if (n) this.staffNodes[style] = n; }
-    this.beardNode = inst.getObjectByName('Beard') ?? null;
+    // The moustache goes with the beard. The hair does not: a clean-shaven wizard still has hair.
+    this.beardNodes = ['Beard', 'TashL', 'TashR']
+      .map(n => inst.getObjectByName(n))
+      .filter((n): n is THREE.Object3D => !!n);
     this.capeNode = inst.getObjectByName('Cape') ?? null;
     this.orbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: col(look.trim), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 }));
     this.orbGlow.scale.set(1, 1, 1);
@@ -258,8 +261,10 @@ class Wizard {
     (this.orbGlow.material as THREE.SpriteMaterial).color.set(look.trim);
     for (const [style, node] of Object.entries(this.hatNodes) as [HatStyle, THREE.Object3D][]) node.visible = style === look.hatStyle || (!this.hatNodes[look.hatStyle] && style === 'pointy');
     for (const [style, node] of Object.entries(this.staffNodes) as [StaffStyle, THREE.Object3D][]) node.visible = style === look.staffStyle || (!this.staffNodes[look.staffStyle] && style === 'claw');
-    if (this.beardNode) this.beardNode.visible = look.beard;
+    for (const n of this.beardNodes) n.visible = look.beard;
     if (this.capeNode) this.capeNode.visible = look.cape;
+    // Build. The body's origin is at the feet, so a taller wizard grows upwards rather than sinking.
+    this.body.scale.set(look.girth, look.height, look.girth);
   }
 
   reset(): void { this.deathT = -1; this.hitT = 0; this.castT = 0; this.hold = false; this.frozen = false; this.phased = false; this.tilt = 0; this.body.rotation.x = 0; this.group.position.y = 0; }

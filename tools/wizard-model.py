@@ -622,15 +622,20 @@ def export(path):
     )
 
 
-def preview(out_dir, hat='Pointy', staff='Crystal'):
-    """Renders the built wizard from the front and three-quarters, for checking the silhouette."""
-    for obj in COLL.objects:
-        if obj.name.startswith('Hat_'):
-            for child in obj.children_recursive:
-                child.hide_render = obj.name != f'Hat_{hat}'
-        if obj.name.startswith('Staff_'):
-            for child in obj.children_recursive:
-                child.hide_render = obj.name != f'Staff_{staff}'
+def preview(out_dir, hat='Pointy', staff='Crystal', framing=None, tags=None):
+    """
+    Renders the built wizard from the front, three-quarters and behind, for checking the silhouette.
+    framing is (distance, camera height, what to aim at); tags names the angles to render. A lineup
+    passes both, and picks its own hats and staffs per wizard, so the whole-scene hiding is skipped.
+    """
+    if framing is None:
+        for obj in COLL.objects:
+            if obj.name.startswith('Hat_'):
+                for child in obj.children_recursive:
+                    child.hide_render = obj.name != f'Hat_{hat}'
+            if obj.name.startswith('Staff_'):
+                for child in obj.children_recursive:
+                    child.hide_render = obj.name != f'Staff_{staff}'
 
     for other in bpy.data.collections:
         if other is not COLL:
@@ -654,14 +659,18 @@ def preview(out_dir, hat='Pointy', staff='Crystal'):
         COLL.objects.link(light)
 
     cam_data = bpy.data.cameras.new('PrevCam')
-    cam_data.lens = 60
+    cam_data.lens = 35 if framing else 60   # a lineup needs the whole row in frame
     cam = bpy.data.objects.new('PrevCam', cam_data)
     COLL.objects.link(cam)
     scene.camera = cam
 
     os.makedirs(out_dir, exist_ok=True)
-    for tag, ang in (('front', 0.0), ('three-quarter', 0.85), ('back', math.pi)):
-        d, h, aim = 7.6, 2.6, 1.45
+    d, h, aim = framing or (7.6, 2.6, 1.45)
+    if framing:
+        scene.render.resolution_x, scene.render.resolution_y = 1300, 420
+    angles = {'front': 0.0, 'three-quarter': 0.85, 'back': math.pi, 'lineup': 0.0}
+    for tag in tags or ('front', 'three-quarter', 'back'):
+        ang = angles[tag]
         cam.location = (math.sin(ang) * d, -math.cos(ang) * d, h)
         cam.rotation_euler = Euler((math.pi / 2 - math.atan2(h - aim, d), 0, ang))
         scene.render.filepath = os.path.join(out_dir, f'wizard-{tag}.png')
@@ -669,12 +678,79 @@ def preview(out_dir, hat='Pointy', staff='Crystal'):
     print('PREVIEW_OK ' + out_dir)
 
 
+def lineup(looks_path, out_dir):
+    """
+    Renders several wizards side by side, dressed from real WizardLook values. The game recolours
+    one model per player, so whether the cast reads as a cast is a question about the palette rather
+    than about the mesh, and only a picture answers it.
+
+      npx tsx server/src/lookstest.ts --dump looks.json 4,19,63
+      blender -b art/...blend --python tools/wizard-model.py -- --lineup looks.json out/
+    """
+    import json
+
+    with open(looks_path, encoding='utf-8') as fh:
+        looks = json.load(fh)
+
+    # The material a look's colour lands on, matching setLook in app/src/scene.ts.
+    FROM_LOOK = {'Robe': 'robe', 'Cape': 'hat', 'Hat': 'hat', 'Trim': 'trim',
+                 'Skin': 'skin', 'Beard': 'beardColor', 'Boots': 'boots'}
+
+    def srgb(hex_color):
+        n = int(hex_color.lstrip('#'), 16)
+        out = []
+        for shift in (16, 8, 0):
+            c = ((n >> shift) & 255) / 255
+            out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+        return (*out, 1.0)
+
+    step = 2.2
+    for index, look in enumerate(looks):
+        root = build()
+        root.location = ((index - (len(looks) - 1) / 2) * step, 0, 0)
+        body = [o for o in root.children_recursive] + [root]
+        for obj in body:
+            if obj.type != 'MESH':
+                continue
+            src = obj.data.materials[0]
+            key = FROM_LOOK.get(src.name)
+            if key:
+                mat = src.copy()
+                mat.name = f'{src.name}_{index}'
+                bsdf = mat.node_tree.nodes.get('Principled BSDF')
+                if bsdf:
+                    bsdf.inputs['Base Color'].default_value = srgb(look[key])
+                mat.diffuse_color = srgb(look[key])
+                obj.data.materials[0] = mat
+            if obj.name.split('.')[0] in ('Beard', 'TashL', 'TashR') and not look['beard']:
+                obj.hide_render = True
+        for obj in root.children:
+            base = obj.name.split('.')[0]
+            if base.startswith('Hat_') and base != 'Hat_' + look['hatStyle'].capitalize():
+                for child in obj.children_recursive:
+                    child.hide_render = True
+        pivot = next((o for o in root.children if o.name.split('.')[0] == 'ArmPivot'), None)
+        if pivot:
+            for obj in pivot.children:
+                base = obj.name.split('.')[0]
+                if base.startswith('Staff_') and base != 'Staff_' + look['staffStyle'].capitalize():
+                    for child in obj.children_recursive:
+                        child.hide_render = True
+        root.scale = (look['girth'], look['girth'], look['height'])
+
+    preview(out_dir, framing=(step * len(looks) * 1.05, 2.4, 1.45), tags=('lineup',))
+    print('LINEUP_OK %d' % len(looks))
+
+
 def main():
     global COLL
     COLL = fresh_collection()
-    build()
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if '--lineup' in argv:
+        lineup(argv[argv.index('--lineup') + 1], argv[argv.index('--lineup') + 2])
+        return
+    build()
     if '--preview' in argv:
         preview(argv[argv.index('--preview') + 1])
         return
