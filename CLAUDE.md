@@ -50,8 +50,8 @@ the emulator, check the reverse first.
 ```
 
 Add `-- --preview <dir>` to render a front and three-quarter view instead of exporting, and
-`-- --no-save` to leave the blend alone. `art/wizard-1v1s-models.blend` is the live source;
-`app/art/` holds an older copy that nothing reads.
+`-- --no-save` to leave the blend alone. `art/wizard-1v1s-models.blend` is the only source. Keep it closed in Blender while the
+script runs: an open session holds its own copy in memory and would save back over the export.
 
 **Wind every face outwards.** An inside-out solid renders perfectly in Blender, which draws back
 faces, and then vanishes in the game, which culls them. `add_mesh` runs
