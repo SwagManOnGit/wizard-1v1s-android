@@ -16,6 +16,7 @@ export const CONFIG = {
     doubleCoins: 'wizard_double_coins',
     noAds: 'wizard_no_ads',
     hatPack: 'wizard_hat_pack',
+    seasonPass: 'wizard_season_pass',
   },
   /** Coins granted by each consumable purchase and the rewarded ad base amount. */
   coinsSmall: 2000,

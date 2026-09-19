@@ -58,7 +58,7 @@ app.post('/api/score', (req, res) => {
   // levels, which silently capped every score on the board and would have made the campaign
   // leaderboard a wall of ties nobody could get past.
   const best = Math.max(0, Math.min(MAX_LEVEL, Math.floor(b.best)));
-  const p = store.recordBest(b.deviceId.slice(0, 64), String(b.name ?? 'Wizard').slice(0, 16), best);
+  const p = store.recordBest(b.deviceId.slice(0, 64), String(b.name ?? 'Wizard').slice(0, 16), best, typeof b.title === 'string' ? b.title : undefined);
   res.json({ ok: true, rating: p.rating, best: p.best });
 });
 

@@ -5,7 +5,7 @@ import { Battle, type BattleEvent } from '@wizard/shared';
 import {
   AD_REWARD, BUYABLE_ELEMENTS, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
   RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
-  LISTED_SPELLS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
+  LISTED_SPELLS, SEASON_DAYS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, TIER_XP, UPGRADES,
   activeSetBonus, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
   nextArena,
   isAttuned, isBossLevel, isChapterBoss,
@@ -26,6 +26,10 @@ import { ACHIEVEMENTS, evaluateAchievements } from './features/achievements';
 import { challengeAvailable, claimDaily, dailyChallenge, markChallengeDone, nextRewardTime, type Challenge } from './features/daily';
 import { canClaimQuests, ensureQuests, questChest, questsToday } from './features/quests';
 import { weekKey, weeklyRumour } from './features/rumour';
+import {
+  QUEST_XP, SEASON_TIER_COUNT, addSeasonXp, battleXp, chestById, claimSeason, ensureSeason,
+  offlineEarnings, rewardsFor, seasonFor, tierFor, unclaimedTiers,
+} from './features/season';
 import { BotSession, GhostSession, OnlineSession, fetchGhost, type DuelMode, type DuelSession } from './duel/session';
 import type { BattleLike } from './duel/view';
 
@@ -176,7 +180,7 @@ export function showSplash(root: HTMLElement): Promise<void> {
   return new Promise(res => setTimeout(res, 1500));
 }
 
-type ScreenId = 'menu' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements' | 'spellbook' | 'gear' | 'market';
+type ScreenId = 'menu' | 'battle' | 'result' | 'shop' | 'duel' | 'settings' | 'ranks' | 'achievements' | 'spellbook' | 'gear' | 'market' | 'season';
 type ShopTab = 'elements' | 'chests' | 'upgrades';
 type SpellbookTab = 'known' | 'codex';
 
@@ -246,6 +250,8 @@ export class UI {
   private battleStartedAt = 0;
   private ftueTimeScale = 1;
   private pendingGift: SpellDef | null = null;
+  /** Tiers gained since the last result screen, so the season bump is reported where it happened. */
+  private seasonGained = 0;
   /** How many wizards know each spell, fetched when the spellbook opens. Null until it answers. */
   private board: { players: number; spells: Record<string, { holders: number; first: string | null }> } | null = null;
   /** Which block of fifty levels the map is showing. -1 until the first render picks one. */
@@ -287,7 +293,7 @@ export class UI {
     this.screens = {
       menu: el('div', 'screen'), battle: el('div', 'screen'), result: el('div', 'screen'), shop: el('div', 'screen'),
       duel: el('div', 'screen'), settings: el('div', 'screen'), ranks: el('div', 'screen'), achievements: el('div', 'screen'),
-      spellbook: el('div', 'screen'), gear: el('div', 'screen'), market: el('div', 'screen'),
+      spellbook: el('div', 'screen'), gear: el('div', 'screen'), market: el('div', 'screen'), season: el('div', 'screen'),
     };
     for (const [id, s] of Object.entries(this.screens)) { s.id = id; root.append(s); }
     this.overlay = el('div', 'overlay');
@@ -369,8 +375,22 @@ export class UI {
    * scripted duel, because the one verb this game runs on is one nobody has met before.
    */
   start(): void {
-    if (this.save.ftue < FTUE_BATTLE_DONE && this.save.best === 0) this.startFtue();
-    else this.showMenu();
+    if (this.save.ftue < FTUE_BATTLE_DONE && this.save.best === 0) { this.startFtue(); return; }
+    const away = offlineEarnings(this.save);
+    this.save.lastSeen = Date.now();
+    this.showMenu();
+    if (away) {
+      this.save.coins += away.coins;
+      this.save.earned += away.coins;
+      this.commit();
+      const hours = Math.floor(away.minutes / 60), mins = away.minutes % 60;
+      setTimeout(() => this.openOverlay((box, close) => {
+        box.append(el('h2', '', 'WHILE YOU WERE OUT'),
+          el('div', 'note', `The tower kept paying for ${hours ? `${hours}h ${mins}m` : `${mins}m`}.`),
+          el('div', 'reward', `+${fmt(away.coins)} coins`),
+          btn('TAKE IT', 'gold big', close));
+      }), 400);
+    }
   }
 
   private startFtue(): void {
@@ -429,7 +449,9 @@ export class UI {
     const badge = el('div', 'wiz-level');
     badge.innerHTML = `<small>LV</small>${wizardLevel(this.save.best)}`;
     const idBox = el('div', 'who-box');
-    idBox.append(el('div', 'who-name', this.save.name), el('div', 'who-sub',
+    const nameLine = el('div', 'who-name', this.save.name);
+    if (this.save.title) nameLine.append(el('span', 'worn-title', ` ${this.save.title}`));
+    idBox.append(nameLine, el('div', 'who-sub',
       `${arenaFor(this.save.rating).name} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
     bar.append(badge, idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
 
@@ -628,6 +650,7 @@ export class UI {
     this.save.quests.claimed = true;
     this.save.stats.chests++;
     const results = openChest(chest, this.save.elements).map(it => grantItem(this.save, it));
+    addSeasonXp(this.save, QUEST_XP);
     analytics.track('quest_claimed', { chest: chest.id, best: this.save.best });
     this.commit();
     this.afterProgress();
@@ -1459,6 +1482,10 @@ export class UI {
       hpLeft: Math.max(0, Math.round(b.player.hp)),
       casts: b.casts, ftue: this.ftueStep >= 0,
     });
+    if (outcome === 'win' && !this.training && level <= this.save.best) {
+      // A replay still moves the season on, just less than a first clear.
+      this.seasonGained += addSeasonXp(this.save, Math.round(battleXp(level, enemy.boss, false) * 0.5));
+    }
     if (outcome === 'win') {
       this.save.wins++;
       if (enemy.boss) this.save.stats.bossWins++;
@@ -1467,7 +1494,8 @@ export class UI {
         const first = this.save.best === 0;
         this.save.best = level;
         analytics.track('level_cleared', { level });
-        void api.postScore(this.save.deviceId, this.save.name, level);
+        this.seasonGained += addSeasonXp(this.save, battleXp(level, enemy.boss, true));
+        void api.postScore(this.save.deviceId, this.save.name, level, this.save.title);
         // Asked on the second clear, once the scripted duel and its cards are out of the way.
         if (!first && this.save.best === 2) this.maybeScheduleReminder();
         // One starter spell per level for the first three, each introduced on its own card.
@@ -1522,6 +1550,11 @@ export class UI {
     card.append(h2, sub, rew, coins);
     // The campaign level is the account level, so a first clear is a level-up worth announcing.
     if (outcome === 'win' && level === this.save.best) card.append(el('div', 'levelup', `WIZARD LEVEL ${wizardLevel(this.save.best)}`));
+    if (outcome === 'win') {
+      const gained = this.seasonGained;
+      this.seasonGained = 0;
+      card.append(this.seasonBar(gained));
+    }
     if (drop) {
       // Held for a beat and then revealed, with the rarity colour arriving as a burst. The random
       // reward was always here; it was the presentation that made it read as a line of text.
@@ -1578,6 +1611,94 @@ export class UI {
           btn('Later', 'ghost', close));
       }), 650);
     }
+  }
+
+  /** A thin season bar with whatever tiers this fight just earned. */
+  private seasonBar(gainedTiers = 0): HTMLElement {
+    ensureSeason(this.save);
+    const tier = tierFor(this.save.season.xp);
+    const into = tier >= SEASON_TIER_COUNT ? TIER_XP : this.save.season.xp % TIER_XP;
+    const row = el('div', 'season-bar');
+    const label = el('div', 'season-label', gainedTiers > 0
+      ? `SEASON TIER ${tier} · +${gainedTiers} tier${gainedTiers === 1 ? '' : 's'}`
+      : `SEASON TIER ${tier} of ${SEASON_TIER_COUNT}`);
+    const track = el('div', 'season-track');
+    const fill = el('div', 'fill');
+    fill.style.width = `${Math.round((into / TIER_XP) * 100)}%`;
+    track.append(fill);
+    row.append(label, track);
+    if (gainedTiers > 0) row.classList.add('gained');
+    return row;
+  }
+
+  /** The pass itself: a ladder of forty tiers, both tracks visible, only one of them yours. */
+  showSeason(): void {
+    this.stopLoop();
+    setMusic('menu');
+    ensureSeason(this.save);
+    const def = seasonFor();
+    const s = this.screens.season;
+    s.innerHTML = '';
+    const head = el('div', 'shop-head');
+    head.append(btn('◀', 'small ghost', () => this.showMarket()), el('h1', '', 'SEASON'), el('div', 'coins', fmt(this.save.coins)));
+
+    const body = el('div', 'shop-body');
+    const tier = tierFor(this.save.season.xp);
+    const intro = el('div', 'card');
+    intro.append(el('div', 'name', `Season of ${def.name}`),
+      el('div', 'desc', `Day ${def.day} of ${SEASON_DAYS}. Tier ${tier} of ${SEASON_TIER_COUNT}. Play anything to climb: levels, quests and duels all count.`));
+    intro.append(this.seasonBar());
+    if (!this.save.season.premium) {
+      const buy = btn(platform.price(CONFIG.skus.seasonPass) ?? '£4.99', 'gold', async () => {
+        buy.disabled = true;
+        analytics.track('purchase_attempt', { sku: CONFIG.skus.seasonPass });
+        const r = platform.purchasesAvailable() ? await platform.purchase(CONFIG.skus.seasonPass) : await this.showFakePurchase(CONFIG.skus.seasonPass).then(ok => ({ ok, sku: CONFIG.skus.seasonPass, message: '' }));
+        if (r.ok) { this.grantPurchase(CONFIG.skus.seasonPass); sfx.buy(); this.toast('Season pass unlocked', 'Every premium reward you have already passed is yours'); }
+        this.showSeason();
+      });
+      intro.append(el('div', 'note', 'The premium track pays on every tier, including the ones you have already climbed past.'), buy);
+    } else intro.append(el('div', 'note gold-note', 'Premium track unlocked.'));
+    body.append(intro);
+
+    const claimable = unclaimedTiers(this.save);
+    if (claimable.length) {
+      body.append(btn(`CLAIM ${claimable.length} TIER${claimable.length === 1 ? '' : 'S'}`, 'gold big', () => this.claimSeasonNow()));
+    }
+
+    for (let t = 1; t <= SEASON_TIER_COUNT; t++) {
+      const reached = t <= tier, taken = this.save.season.claimed.includes(t);
+      const row = el('div', `season-tier ${reached ? 'reached' : ''} ${taken ? 'taken' : ''}`);
+      row.append(el('div', 'tier-no', String(t)));
+      const tracks = el('div', 'tier-tracks');
+      for (const r of rewardsFor(t)) {
+        const locked = r.premium && !this.save.season.premium;
+        const chip = el('div', `tier-reward ${r.premium ? 'premium' : ''} ${locked ? 'locked' : ''}`);
+        chip.textContent = r.kind === 'coins' ? `${fmt(Number(r.value))} coins`
+          : r.kind === 'chest' ? chestById(String(r.value)).name
+          : `Title: "${r.value}"`;
+        tracks.append(chip);
+      }
+      row.append(tracks);
+      body.append(row);
+    }
+    s.append(head, body);
+    this.show('season');
+  }
+
+  private claimSeasonNow(): void {
+    const owed = unclaimedTiers(this.save);
+    if (!owed.length) return;
+    const got = claimSeason(this.save);
+    const loot: GrantResult[] = [];
+    for (const id of got.chests) for (const it of openChest(chestById(id), this.save.elements)) loot.push(grantItem(this.save, it));
+    this.save.stats.chests += got.chests.length;
+    analytics.track('quest_claimed', { season: this.save.season.id, tiers: got.tiers.length });
+    this.commit();
+    this.afterProgress();
+    this.showSeason();
+    if (got.titles.length) this.toast(`Title earned: "${got.titles[got.titles.length - 1]}"`, 'Worn now; change it in Settings');
+    if (loot.length) this.showLoot(loot, 'Season rewards');
+    else if (got.coins) this.toast(`+${fmt(got.coins)} coins`, `${got.tiers.length} tier${got.tiers.length === 1 ? '' : 's'} claimed`);
   }
 
   private leaveTraining(): void {
@@ -1844,6 +1965,12 @@ export class UI {
     if (sku === CONFIG.skus.coinsLarge && !restoring) { this.save.coins += CONFIG.coinsLarge; this.save.earned += CONFIG.coinsLarge; }
     if (sku === CONFIG.skus.doubleCoins) this.save.passes.doubleCoins = true;
     if (sku === CONFIG.skus.noAds) this.save.passes.noAds = true;
+    if (sku === CONFIG.skus.seasonPass) {
+      // Unclaim every tier already reached, so the premium half of each is paid on the next claim.
+      ensureSeason(this.save);
+      this.save.season.premium = true;
+      this.save.season.claimed = [];
+    }
     if (sku === CONFIG.skus.hatPack && !restoring) {
       const gold = CHESTS.find(c => c.id === 'gold')!;
       for (let i = 0; i < 7; i++) for (const it of openChest(gold, this.save.elements)) grantItem(this.save, it);
@@ -2155,6 +2282,14 @@ export class UI {
     const head = el('div', 'shop-head');
     head.append(btn('◀', 'small ghost', () => this.showMenu()), el('h1', '', 'MARKETPLACE'), el('div', 'coins', fmt(this.save.coins)));
     const body = el('div', 'shop-body');
+    ensureSeason(this.save);
+    const def = seasonFor();
+    const owed = unclaimedTiers(this.save).length;
+    const pass = el('div', 'card season-card');
+    pass.append(el('div', 'name', `Season of ${def.name}`),
+      el('div', 'desc', `Day ${def.day} of ${SEASON_DAYS} · tier ${tierFor(this.save.season.xp)} of ${SEASON_TIER_COUNT}${owed ? ` · ${owed} waiting` : ''}`));
+    pass.append(this.seasonBar(), btn(owed ? `OPEN THE SEASON · ${owed} TO CLAIM` : 'OPEN THE SEASON', owed ? 'gold' : 'blue', () => this.showSeason()));
+    body.append(pass);
     this.renderCoins(body);
     this.renderBank(body);
     s.append(head, body);
@@ -2246,6 +2381,7 @@ export class UI {
         const info = el('div', 'info');
         const nameRow = el('div', 'name-row');
         nameRow.append(el('div', 'name', e.name));
+        if (e.title) nameRow.append(el('span', 'worn-title', e.title));
         // A world first is the rarest thing anyone can hold: it is worth a badge on the board.
         if (e.firsts) {
           const badge = el('span', 'firsts', `★ ${e.firsts}`);
@@ -2266,7 +2402,7 @@ export class UI {
     }
     s.append(head, tabs, body);
     this.show('ranks');
-    void api.postScore(this.save.deviceId, this.save.name, this.save.best).then(() => render('best'));
+    void api.postScore(this.save.deviceId, this.save.name, this.save.best, this.save.title).then(() => render('best'));
   }
 
   showAchievements(): void {

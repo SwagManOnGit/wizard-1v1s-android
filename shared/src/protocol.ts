@@ -63,10 +63,12 @@ export type ServerMessage =
 // ---- HTTP API -------------------------------------------------------------------
 export interface LeaderboardEntry {
   deviceId: string; name: string; best: number; rating: number; wins: number; updatedAt: number;
+  /** A season title, worn beside the name. Cosmetic, and the point of the season's free track. */
+  title?: string;
   /** Spells this wizard was the first in the world to draw. */
   firsts?: number;
 }
-export interface ScorePost { deviceId: string; name: string; best: number }
+export interface ScorePost { deviceId: string; name: string; best: number; title?: string }
 export interface GhostPost { deviceId: string; tape: GhostTape }
 export interface GhostResultPost { deviceId: string; ghostId: string; won: boolean }
 export interface ProfileResponse { deviceId: string; name: string; rating: number; wins: number; losses: number; best: number }

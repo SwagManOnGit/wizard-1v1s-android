@@ -28,7 +28,11 @@ async function boot(): Promise<void> {
     (window as unknown as { __wiz: unknown }).__wiz = { GLYPHS, Recognizer, SPELLS, SPELL_BY_ID, enemyForLevel, enemyLook, Battle, PvpBattle, PvpBot, computeStats, ui, save };
   }
 
-  platform.onPause(() => { pauseAudio(); ui.onPause(); analytics.endSession(); void platform.save(JSON.stringify(save)); });
+  platform.onPause(() => {
+    pauseAudio(); ui.onPause(); analytics.endSession();
+    save.lastSeen = Date.now();
+    void platform.save(JSON.stringify(save));
+  });
   // Coming back from the background starts a fresh session, which is what "sessions per day" means.
   platform.onResume(() => { resumeAudio(); ui.onResume(); analytics.start(save.deviceId, save.settings.analytics); });
   platform.onBack(() => ui.onBack());

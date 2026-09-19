@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { GhostTape, LeaderboardEntry } from '@wizard/shared';
 
-export interface PlayerRecord { deviceId: string; name: string; best: number; rating: number; wins: number; losses: number; updatedAt: number }
+export interface PlayerRecord { deviceId: string; name: string; best: number; rating: number; wins: number; losses: number; updatedAt: number; title?: string }
 
 /**
  * Telemetry is kept as a per-device set of milestones rather than a log of every event: the
@@ -52,9 +52,10 @@ export class Store {
     return p;
   }
 
-  recordBest(deviceId: string, name: string, best: number): PlayerRecord {
+  recordBest(deviceId: string, name: string, best: number, title?: string): PlayerRecord {
     const p = this.player(deviceId, name);
     if (best > p.best) { p.best = best; p.updatedAt = Date.now(); this.flush(); }
+    if (title !== undefined && title !== p.title) { p.title = title.slice(0, 24); p.updatedAt = Date.now(); this.flush(); }
     return p;
   }
 
@@ -154,7 +155,7 @@ export class Store {
       .filter(p => (by === 'best' ? p.best > 0 : p.wins + p.losses > 0))
       .sort((a, b) => (by === 'best' ? b.best - a.best || b.rating - a.rating : b.rating - a.rating || b.best - a.best))
       .slice(0, limit)
-      .map(p => ({ deviceId: p.deviceId, name: p.name, best: p.best, rating: p.rating, wins: p.wins, updatedAt: p.updatedAt, firsts: this.firstsBy(p.deviceId) }));
+      .map(p => ({ deviceId: p.deviceId, name: p.name, best: p.best, rating: p.rating, wins: p.wins, updatedAt: p.updatedAt, firsts: this.firstsBy(p.deviceId), title: p.title }));
   }
 
   addGhost(deviceId: string, tape: GhostTape): string {

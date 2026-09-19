@@ -20,7 +20,7 @@ export const api = {
   health: () => call<{ ok: boolean; players: number; ghosts: number }>('/api/health', undefined, 3000),
   leaderboard: (by: 'best' | 'rating') => call<{ by: string; entries: LeaderboardEntry[] }>(`/api/leaderboard?by=${by}`),
   profile: (deviceId: string) => call<ProfileResponse>(`/api/profile/${encodeURIComponent(deviceId)}`),
-  postScore: (deviceId: string, name: string, best: number) => call<{ ok: boolean; rating: number; best: number }>('/api/score', { method: 'POST', body: JSON.stringify({ deviceId, name, best }) }),
+  postScore: (deviceId: string, name: string, best: number, title?: string) => call<{ ok: boolean; rating: number; best: number }>('/api/score', { method: 'POST', body: JSON.stringify({ deviceId, name, best, title }) }),
   postGhost: (deviceId: string, tape: GhostTape) => call<{ ok: boolean; id: string }>('/api/ghost', { method: 'POST', body: JSON.stringify({ deviceId, tape }) }),
   randomGhost: (deviceId: string, rating: number) => call<GhostTape & { id: string }>(`/api/ghost/random?deviceId=${encodeURIComponent(deviceId)}&rating=${rating}`),
   ghostResult: (deviceId: string, ghostId: string, won: boolean) => call<{ ok: boolean }>('/api/ghost/result', { method: 'POST', body: JSON.stringify({ deviceId, ghostId, won }) }),

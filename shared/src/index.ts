@@ -3,6 +3,7 @@ export * from './recognizer';
 export * from './looks';
 export * from './elements';
 export * from './spells';
+export * from './season';
 export * from './secrets';
 export * from './equipment';
 export * from './loot';

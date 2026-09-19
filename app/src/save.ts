@@ -31,6 +31,13 @@ export interface SaveData {
   ftue: number;
   /** The week key of the last rumour the player has actually looked at. */
   rumourSeen: string;
+  /** Season progress. Resets when the season id changes; the titles earned are kept forever. */
+  season: { id: string; xp: number; claimed: number[]; premium: boolean };
+  /** Every title ever earned, and the one being worn. */
+  titles: string[];
+  title: string;
+  /** When the game was last closed, for the offline trickle. */
+  lastSeen: number;
   /** Spell ids the player has actually drawn at least once. */
   discovered: string[];
   /** Successful casts per spell, which is what fades that spell's guide off the draw pad. */
@@ -73,6 +80,7 @@ function randomName(): string { return `${NAMES[Math.floor(Math.random() * NAMES
 export function defaultSave(): SaveData {
   return {
     v: 3, coins: 0, level: 1, best: 0, ftue: 0, rumourSeen: '',
+    season: { id: '', xp: 0, claimed: [], premium: false }, titles: [], title: '', lastSeen: 0,
     // A new wizard knows the four starters but carries only Spark: the rest are handed over one
     // per level, so the first four fights each teach exactly one new thing.
     discovered: [...STARTING_SPELLS], unseen: [], loadout: [STARTING_SPELLS[0]], practice: {},
@@ -108,6 +116,14 @@ export function parseSave(raw: string | null): SaveData {
     d.level = int(o.level, 1, 1);
     d.ftue = int(o.ftue, 0);
     d.rumourSeen = str(o.rumourSeen, '');
+    const sn = obj(o.season);
+    d.season = {
+      id: str(sn.id, ''), xp: int(sn.xp, 0), premium: bool(sn.premium, false),
+      claimed: (Array.isArray(sn.claimed) ? sn.claimed : []).filter((x): x is number => typeof x === 'number'),
+    };
+    d.titles = strList(o.titles);
+    d.title = str(o.title, '');
+    d.lastSeen = int(o.lastSeen, 0);
     d.best = int(o.best, 0);
 
     // v1/v2 stored bought spells in `owned`; those the player had are treated as already discovered.
