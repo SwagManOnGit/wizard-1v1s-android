@@ -70,6 +70,8 @@ function lookFromName(name: string): WizardLook {
   };
 }
 
+type HubDrawer = 'quests' | 'challenge' | null;
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -492,38 +494,41 @@ export class UI {
     ensureQuests(this.save);
     const chest = questChest(this.save);
     const quests = questsToday(this.save);
-    const qCard = el('div', 'card quests');
-    const qHead = el('div', 'quest-head');
-    const qTitle = el('b', 'with-icon');
-    qTitle.append(uiIcon('scroll', 22, '#ffcc33'), document.createTextNode('DAILY QUESTS'));
-    qHead.append(qTitle,
-      el('small', '', this.save.quests.claimed ? 'Reward claimed' : `All three: a ${chest.name}`));
-    qCard.append(qHead);
-    for (const q of quests) {
-      const row = el('div', `quest ${q.done ? 'done' : ''}`);
-      row.append(questIcon(q.def.metric, 26));
-      const txt = el('div', 'quest-txt');
-      txt.append(el('div', 'name', q.def.name), el('div', 'desc', q.def.desc));
-      const bar = el('div', 'quest-bar');
-      const fill = el('div', 'fill');
-      fill.style.width = `${Math.round((q.progress / q.def.goal) * 100)}%`;
-      bar.append(fill);
-      row.append(txt, bar, el('div', 'quest-count', q.done ? 'DONE' : `${q.progress}/${q.def.goal}`));
-      qCard.append(row);
-    }
-    if (canClaimQuests(this.save)) qCard.append(btn(`CLAIM ${chest.name.toUpperCase()}`, 'gold', () => this.claimQuests()));
-    body.append(qCard);
+    const doneCount = quests.filter(q => q.done).length;
+    const claimable = canClaimQuests(this.save);
+    body.append(this.drawer('quests', 'scroll', '#ffcc33', 'DAILY QUESTS',
+      claimable ? `${chest.name} ready` : this.save.quests.claimed ? 'Claimed' : `${doneCount}/${quests.length} done`,
+      claimable, qCard => {
+        qCard.classList.add('quests');
+        qCard.append(el('div', 'quest-head', this.save.quests.claimed ? 'Reward claimed' : `All three: a ${chest.name}`));
+        for (const q of quests) {
+          const row = el('div', `quest ${q.done ? 'done' : ''}`);
+          row.append(questIcon(q.def.metric, 26));
+          const txt = el('div', 'quest-txt');
+          txt.append(el('div', 'name', q.def.name), el('div', 'desc', q.def.desc));
+          const bar = el('div', 'quest-bar');
+          const fill = el('div', 'fill');
+          fill.style.width = `${Math.round((q.progress / q.def.goal) * 100)}%`;
+          bar.append(fill);
+          row.append(txt, bar, el('div', 'quest-count', q.done ? 'DONE' : `${q.progress}/${q.def.goal}`));
+          qCard.append(row);
+        }
+        if (claimable) qCard.append(btn(`CLAIM ${chest.name.toUpperCase()}`, 'gold', () => this.claimQuests()));
+      }));
 
     // Daily challenge sits at the top: one modified fight a day for triple coins.
     const ch = dailyChallenge(this.save);
-    const chCard = el('div', 'card challenge');
-    chCard.append(uiIcon('flame', 34, '#ff8a2a'));
-    const chInfo = el('div');
-    chInfo.append(el('div', 'name', ch.name), el('div', 'desc', `${ch.desc} Level ${ch.level}: ${ch.enemy.name}. Triple coins.`));
-    chCard.append(chInfo);
-    if (challengeAvailable(this.save)) chCard.append(btn('FIGHT', 'gold', () => this.startBattle(ch.level, false, ch)));
-    else chCard.append(btn('Done today', 'ghost'));
-    body.append(chCard);
+    const open = challengeAvailable(this.save);
+    body.append(this.drawer('challenge', 'flame', '#ff8a2a', 'DAILY CHALLENGE',
+      open ? ch.name : 'Done today', open, chCard => {
+        chCard.classList.add('challenge');
+        const chInfo = el('div');
+        chInfo.append(el('div', 'name', ch.name),
+          el('div', 'desc', `${ch.desc} Level ${ch.level}: ${ch.enemy.name}. Triple coins.`));
+        chCard.append(uiIcon('flame', 34, '#ff8a2a'), chInfo);
+        if (open) chCard.append(btn('FIGHT', 'gold', () => this.startBattle(ch.level, false, ch)));
+        else chCard.append(btn('Done today', 'ghost'));
+      }));
 
     // The level map, cut into chapters of fifty: five hundred tiles at once is a scrollbar, not a map.
     const maxPick = Math.min(MAX_LEVEL, this.save.best + 1);
@@ -609,19 +614,19 @@ export class UI {
     body.append(chapterRow, grid, mapToggle);
 
     const foot = el('div', 'hub-foot');
-    const duelRow = el('div', 'menu-row');
-    const duelBtn = btn('DUEL', 'red has-icon', () => this.showDuelMenu());
-    duelBtn.prepend(uiIcon('swords', 22, '#ffffff'));
-    const trainBtn = btn('Training', 'green has-icon', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true));
-    trainBtn.prepend(uiIcon('target', 22, '#ffffff'));
-    duelRow.append(duelBtn, trainBtn);
+    // Duelling is a headline mode, not a thing beside training, so it gets the same weight as the
+    // campaign button. Training drops down to sit with the two screens nobody opens mid-session.
+    const duelBtn = btn('DUEL', 'red big has-icon', () => this.showDuelMenu());
+    duelBtn.prepend(uiIcon('swords', 26, '#ffffff'));
     const extraRow = el('div', 'menu-row');
+    const trainBtn = btn('Training', 'ghost small has-icon', () => this.startBattle(Math.min(MAX_LEVEL, Math.max(1, this.save.best)), true));
+    trainBtn.prepend(uiIcon('target', 20, '#b8ffc4'));
     const ranksBtn = btn('Ranks', 'ghost small has-icon', () => this.showRanks());
     ranksBtn.prepend(uiIcon('trophy', 20, '#ffcc33'));
     const awardsBtn = btn('Awards', 'ghost small has-icon', () => this.showAchievements());
     awardsBtn.prepend(uiIcon('medal', 20, '#ffcc33'));
-    extraRow.append(ranksBtn, awardsBtn);
-    foot.append(info, playBtn, duelRow, extraRow);
+    extraRow.append(trainBtn, ranksBtn, awardsBtn);
+    foot.append(info, playBtn, duelBtn, extraRow);
 
     s.append(bar, goalStrip, body, foot);
     this.show('menu');
@@ -2409,6 +2414,8 @@ export class UI {
 
   // ---------------------------------------------------------------- gear
   /** Which slot the collection below the wizard is filtering to, and which element inside it. */
+  /** Which of the two daily drawers on the hub is open, if either. */
+  private hubOpen: HubDrawer = null;
   private gearSlot: EquipSlot = 'hat';
   private gearElement: ElementId | 'all' = 'all';
   /** Kept between renders so the canvas and its WebGL context survive a re-render. */
@@ -2547,6 +2554,31 @@ export class UI {
     body.scrollTop = scrollTop;
     this.show('gear');
     this.wizardView?.start();
+  }
+
+  /**
+   * A collapsed row that opens to show its card. The hub had the quests, the challenge, the level
+   * map and four buttons all competing at once; this keeps the daily pair to one line each until
+   * they are asked for, without hiding the fact that something is waiting to be claimed.
+   */
+  private drawer(id: HubDrawer, icon: UiIconName, tint: string, title: string, note: string,
+    flag: boolean, fill: (card: HTMLElement) => void): HTMLElement {
+    const open = this.hubOpen === id;
+    const wrap = el('div', `drawer ${open ? 'open' : ''} ${flag ? 'ready' : ''}`);
+    const head = el('button', 'drawer-head');
+    head.append(uiIcon(icon, 24, tint), el('b', '', title), el('small', '', note), el('em', '', open ? '▴' : '▾'));
+    head.addEventListener('click', () => {
+      sfx.click();
+      this.hubOpen = open ? null : id;   // one at a time, or the screen is back where it started
+      this.showMenu();
+    });
+    wrap.append(head);
+    if (open) {
+      const card = el('div', 'card drawer-body');
+      fill(card);
+      wrap.append(card);
+    }
+    return wrap;
   }
 
   /**

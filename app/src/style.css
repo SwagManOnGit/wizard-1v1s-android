@@ -126,6 +126,25 @@ canvas { image-rendering: pixelated; }
 .swatch:active { transform: translateY(2px); }
 .swatch.on { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold2), inset -3px -3px 0 rgba(0,0,0,0.35); }
 
+/* A daily, folded away until it is asked for. */
+.drawer { margin-bottom: 8px; }
+.drawer-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 52px; padding: 7px 12px;
+  background: linear-gradient(180deg, var(--win2), var(--win)); color: var(--text); text-align: left;
+  border: 3px solid var(--ink); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 var(--win3);
+}
+.drawer-head:active { transform: translateY(2px); }
+.drawer-head canvas { flex: none; }
+.drawer-head b { font-size: 21px; letter-spacing: 1px; color: var(--gold); }
+.drawer-head small { flex: 1; min-width: 0; text-align: right; font-size: 17px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawer-head em { flex: none; font-style: normal; font-size: 18px; color: var(--gold); }
+/* Something is waiting: the point of collapsing these is not to hide that. */
+.drawer.ready .drawer-head { border-color: var(--gold); box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 var(--gold2); }
+.drawer.ready .drawer-head small { color: var(--gold2); }
+.drawer.open .drawer-head { border-bottom-width: 0; }
+.drawer-body { border-top-width: 0; }
+
 .card-head { display: flex; align-items: center; gap: 10px; }
 .card-head canvas { flex: none; }
 .card-head-words { flex: 1; min-width: 0; }
@@ -149,8 +168,10 @@ canvas { image-rendering: pixelated; }
 .menu-card { padding: 20px 22px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 12px; }
 .coins { display: inline-flex; align-items: center; gap: 8px; color: var(--gold); font-size: 26px; text-shadow: 2px 2px 0 var(--ink); }
 .coins::before { content: ''; width: 16px; height: 16px; background: var(--gold); box-shadow: inset -3px -3px 0 var(--gold-dark), inset 3px 3px 0 var(--gold2), 0 0 0 2px var(--ink); display: inline-block; }
-.menu-row { display: flex; gap: 10px; }
-.menu-row .btn { flex: 1; }
+.menu-row { display: flex; gap: 8px; }
+/* min-width:0 lets three buttons share a narrow phone instead of pushing the row wider than it. */
+.menu-row .btn { flex: 1; min-width: 0; }
+.menu-row .btn.small { padding: 5px 6px; font-size: 18px; gap: 5px; }
 .stats-line { color: var(--muted); font-size: 19px; text-align: center; }
 .howto { color: var(--muted); font-size: 19px; text-align: center; max-width: 440px; }
 .boss { color: var(--red); }
