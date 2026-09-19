@@ -6,7 +6,8 @@ import {
   AD_REWARD, BUYABLE_ELEMENTS, CHAPTERS, CHAPTER_SIZE, CHESTS, ELEMENTS, ELEMENT_BY_ID, EQUIP_BY_ID, EQUIP_SLOTS, HAT_STYLES, MAX_LEVEL,
   RARITY_COLORS, RARITY_NAMES, SET_BONUSES, SET_SIZE,
   LISTED_SPELLS, SPELLS, SPELL_BY_ID, STAFF_STYLES, STARTING_EQUIPMENT, TIER_NAMES, UPGRADES,
-  activeSetBonus, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
+  activeSetBonus, arenaFor, chapterName, chapterOf, discoverable, discoveryProgress, discoveryThreshold, elementSpells, enemyForLevel,
+  nextArena,
   isAttuned, isBossLevel, isChapterBoss,
   chestOdds, openChest, requirementText, rollItem, rollLevelDrop, shiftColor, spellStatus, spellStroke, upgradePrice, wizardLevel,
   type ChestDef, type ElementId, type EnemyDef, type EquipDef, type Rarity, type SpellDef, type StageId, type WizardLook,
@@ -160,7 +161,7 @@ function parseSaveFresh(): Partial<SaveData> {
     inventory: [...STARTING_EQUIPMENT],
     equipped: { hat: 'arcane_hat_1', outfit: 'arcane_outfit_1', staff: 'arcane_staff_1', shoes: 'arcane_shoes_1' },
     wins: 0, losses: 0, earned: 0, adsWatched: 0,
-    daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false }, achievements: [],
+    daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false, graceMonth: '' }, achievements: [],
     stats: { dodges: 0, casts: 0, bossWins: 0, duelWins: 0, duelLosses: 0, ghostWins: 0, ghostLosses: 0, metersCast: 0, drops: 0, chests: 0 },
     reviewAsked: false, rating: 1000,
   };
@@ -429,7 +430,7 @@ export class UI {
     badge.innerHTML = `<small>LV</small>${wizardLevel(this.save.best)}`;
     const idBox = el('div', 'who-box');
     idBox.append(el('div', 'who-name', this.save.name), el('div', 'who-sub',
-      `Rating ${this.save.rating} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
+      `${arenaFor(this.save.rating).name} · ${this.save.best ? `${this.save.best} of ${MAX_LEVEL} cleared` : 'No levels cleared yet'}`));
     bar.append(badge, idBox, el('div', 'coins', fmt(this.save.coins)), btn('⚙', 'small ghost', () => this.showSettings()));
 
     // One line, always, saying what to do next.
@@ -644,6 +645,7 @@ export class UI {
     sfx.coin();
     this.openOverlay((box, close) => {
       box.append(el('h2', '', 'DAILY REWARD'), el('div', 'note', `Day ${reward.day} of your streak`), el('div', 'reward', `+${fmt(reward.coins)} coins`));
+      if (reward.saved) box.append(el('div', 'note gold-note', 'You missed a day. Your streak survived it, once this month.'));
       const days = el('div', 'streak');
       for (let i = 1; i <= 7; i++) days.append(el('span', `pip big ${i <= reward.day ? 'on' : ''}`));
       box.append(days, btn('CLAIM', 'gold big', () => { close(); this.showMenu(); }));
@@ -716,6 +718,12 @@ export class UI {
   }
 
   // ---------------------------------------------------------------- duels
+  /** "Adept · 1043 · 57 to Magister" — a band to hold and a band to chase. */
+  private arenaLine(): string {
+    const here = arenaFor(this.save.rating), next = nextArena(this.save.rating);
+    return next ? `${here.name} · ${this.save.rating} · ${next.away} to ${next.rank.name}` : `${here.name} · ${this.save.rating}`;
+  }
+
   showDuelMenu(): void {
     this.stopLoop();
     setMusic('menu');
@@ -726,7 +734,8 @@ export class UI {
     const body = el('div', 'shop-body');
     const me = el('div', 'card');
     const st = this.save.stats;
-    me.append(el('div', 'name', `${this.save.name} · rating ${this.save.rating}`), el('div', 'desc', `Online ${st.duelWins}W ${st.duelLosses}L · Ghosts ${st.ghostWins}W ${st.ghostLosses}L`));
+    me.append(el('div', 'name', this.save.name), el('div', 'arena-line', this.arenaLine()),
+      el('div', 'desc', `Online ${st.duelWins}W ${st.duelLosses}L · Ghosts ${st.ghostWins}W ${st.ghostLosses}L`));
     const status = el('div', 'note', 'Checking the duel server...');
     me.append(status);
     body.append(me);
@@ -1514,15 +1523,27 @@ export class UI {
     // The campaign level is the account level, so a first clear is a level-up worth announcing.
     if (outcome === 'win' && level === this.save.best) card.append(el('div', 'levelup', `WIZARD LEVEL ${wizardLevel(this.save.best)}`));
     if (drop) {
+      // Held for a beat and then revealed, with the rarity colour arriving as a burst. The random
+      // reward was always here; it was the presentation that made it read as a line of text.
       const elDef = ELEMENT_BY_ID[drop.item.element];
-      const loot = el('div', 'row-card loot');
-      loot.style.borderColor = RARITY_COLORS[drop.item.rarity];
-      loot.append(gearIcon(drop.item.slot, drop.item.rarity, 44, elDef.color));
-      const info = el('div', 'info');
-      info.append(el('div', 'name', drop.item.name), el('div', 'kind', `${RARITY_NAMES[drop.item.rarity]} · ${elDef.name}`));
-      info.append(el('div', 'desc', drop.isNew ? (drop.upgrade ? 'New, and equipped' : 'New') : `Duplicate, melted for ${fmt(drop.coins)} coins`));
-      loot.append(info);
-      card.append(loot);
+      const slot = el('div', 'drop-slot');
+      slot.style.setProperty('--rarity', RARITY_COLORS[drop.item.rarity]);
+      slot.append(el('div', 'drop-sealed', '?'));
+      card.append(slot);
+      setTimeout(() => {
+        slot.innerHTML = '';
+        slot.classList.add('revealed');
+        const loot = el('div', 'row-card loot');
+        loot.style.borderColor = RARITY_COLORS[drop.item.rarity];
+        loot.append(gearIcon(drop.item.slot, drop.item.rarity, 44, elDef.color));
+        const info = el('div', 'info');
+        info.append(el('div', 'name', drop.item.name), el('div', 'kind', `${RARITY_NAMES[drop.item.rarity]} · ${elDef.name}`));
+        info.append(el('div', 'desc', drop.isNew ? (drop.upgrade ? 'New, and equipped' : 'New') : `Duplicate, melted for ${fmt(drop.coins)} coins`));
+        loot.append(info);
+        slot.append(el('div', 'burst'), loot);
+        if (drop.item.rarity >= 4) { sfx.win(); if (this.save.settings.haptics) platform.haptic('heavy'); }
+        else sfx.buy();
+      }, 700);
     }
     if (outcome === 'win' && level < MAX_LEVEL) card.append(btn(`NEXT: LEVEL ${level + 1}`, 'gold big', () => this.startBattle(level + 1, false)));
     if (outcome === 'lose') card.append(btn('RETRY', 'gold big', () => this.startBattle(level, false)));
@@ -2222,7 +2243,18 @@ export class UI {
       res.entries.forEach((e, i) => {
         const row = el('div', `row-card ${e.deviceId === this.save.deviceId ? 'me' : ''}`);
         row.append(el('div', 'rank', `#${i + 1}`));
-        const info = el('div', 'info'); info.append(el('div', 'name', e.name), el('div', 'desc', by === 'best' ? `Level ${e.best} · rating ${e.rating}` : `Rating ${e.rating} · ${e.wins} wins · level ${e.best}`));
+        const info = el('div', 'info');
+        const nameRow = el('div', 'name-row');
+        nameRow.append(el('div', 'name', e.name));
+        // A world first is the rarest thing anyone can hold: it is worth a badge on the board.
+        if (e.firsts) {
+          const badge = el('span', 'firsts', `★ ${e.firsts}`);
+          badge.title = `${e.firsts} spell${e.firsts === 1 ? '' : 's'} drawn first in the world`;
+          nameRow.append(badge);
+        }
+        info.append(nameRow, el('div', 'desc', by === 'best'
+          ? `Level ${e.best} · ${arenaFor(e.rating).name}`
+          : `${arenaFor(e.rating).name} ${e.rating} · ${e.wins} wins · level ${e.best}`));
         row.append(info);
         body.append(row);
       });

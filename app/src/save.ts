@@ -9,7 +9,11 @@ export { computeStats };
 export type { PlayerStats };
 
 export interface Settings { music: boolean; sfx: boolean; haptics: boolean; notifications: boolean; analytics: boolean }
-export interface DailyState { lastClaim: string; streak: number; challengeDate: string; challengeDone: boolean }
+export interface DailyState {
+  lastClaim: string; streak: number; challengeDate: string; challengeDone: boolean;
+  /** The month (YYYY-MM) in which the one free missed day was last spent. */
+  graceMonth: string;
+}
 /** Today's quests: when they were rolled, the counters they are measured against, and whether the
  *  reward has been taken. Progress is a delta from that base, so no quest needs its own tracking. */
 export interface QuestState { date: string; base: Record<string, number>; claimed: boolean }
@@ -78,7 +82,7 @@ export function defaultSave(): SaveData {
     wins: 0, losses: 0, earned: 0, adsWatched: 0,
     deviceId: newDeviceId(), name: randomName(),
     settings: { music: true, sfx: true, haptics: true, notifications: true, analytics: true },
-    daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false },
+    daily: { lastClaim: '', streak: 0, challengeDate: '', challengeDone: false, graceMonth: '' },
     quests: { date: '', base: {}, claimed: false },
     achievements: [],
     passes: { doubleCoins: false, noAds: false },
@@ -144,7 +148,7 @@ export function parseSave(raw: string | null): SaveData {
     const st = obj(o.settings);
     d.settings = { music: bool(st.music, true), sfx: bool(st.sfx, true), haptics: bool(st.haptics, true), notifications: bool(st.notifications, true), analytics: bool(st.analytics, true) };
     const dl = obj(o.daily);
-    d.daily = { lastClaim: str(dl.lastClaim, ''), streak: int(dl.streak, 0), challengeDate: str(dl.challengeDate, ''), challengeDone: bool(dl.challengeDone, false) };
+    d.daily = { lastClaim: str(dl.lastClaim, ''), streak: int(dl.streak, 0), challengeDate: str(dl.challengeDate, ''), challengeDone: bool(dl.challengeDone, false), graceMonth: str(dl.graceMonth, '') };
     const qz = obj(o.quests);
     const rawBase = obj(qz.base);
     const base: Record<string, number> = {};

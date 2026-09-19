@@ -5,7 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { DUEL_ROOM, PROTOCOL_VERSION, type GhostPost, type GhostResultPost, type ScorePost } from '@wizard/shared';
+import { DUEL_ROOM, MAX_LEVEL, PROTOCOL_VERSION, type GhostPost, type GhostResultPost, type ScorePost } from '@wizard/shared';
 import { Store } from './store';
 import { DuelRoom } from './DuelRoom';
 
@@ -54,7 +54,10 @@ app.get('/api/profile/:deviceId', (req, res) => {
 app.post('/api/score', (req, res) => {
   const b = req.body as Partial<ScorePost>;
   if (typeof b.deviceId !== 'string' || typeof b.best !== 'number') { res.status(400).json({ error: 'bad request' }); return; }
-  const best = Math.max(0, Math.min(100, Math.floor(b.best)));
+  // Clamped to the real top of the tower. This said 100 until the campaign grew to five hundred
+  // levels, which silently capped every score on the board and would have made the campaign
+  // leaderboard a wall of ties nobody could get past.
+  const best = Math.max(0, Math.min(MAX_LEVEL, Math.floor(b.best)));
   const p = store.recordBest(b.deviceId.slice(0, 64), String(b.name ?? 'Wizard').slice(0, 16), best);
   res.json({ ok: true, rating: p.rating, best: p.best });
 });

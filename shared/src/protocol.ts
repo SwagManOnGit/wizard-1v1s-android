@@ -61,7 +61,11 @@ export type ServerMessage =
   | { t: 'wait'; d: { seconds: number } };
 
 // ---- HTTP API -------------------------------------------------------------------
-export interface LeaderboardEntry { deviceId: string; name: string; best: number; rating: number; wins: number; updatedAt: number }
+export interface LeaderboardEntry {
+  deviceId: string; name: string; best: number; rating: number; wins: number; updatedAt: number;
+  /** Spells this wizard was the first in the world to draw. */
+  firsts?: number;
+}
 export interface ScorePost { deviceId: string; name: string; best: number }
 export interface GhostPost { deviceId: string; tape: GhostTape }
 export interface GhostResultPost { deviceId: string; ghostId: string; won: boolean }

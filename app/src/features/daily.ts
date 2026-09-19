@@ -4,21 +4,41 @@ import { todayKey, type SaveData } from '../save';
 
 export const DAILY_REWARDS = [60, 90, 130, 180, 250, 350, 500];
 
-function yesterdayKey(): string {
-  const d = new Date(); d.setDate(d.getDate() - 1);
+function dayKey(back: number): string {
+  const d = new Date(); d.setDate(d.getDate() - back);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Returns the reward if today's login has not been claimed yet, and marks it claimed. */
-export function claimDaily(save: SaveData): { coins: number; day: number } | null {
+function monthKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Returns the reward if today's login has not been claimed yet, and marks it claimed.
+ *
+ * One missed day a month is forgiven. Losing a three-week streak to a single busy Tuesday mostly
+ * teaches people that the streak is already gone, and they stop coming back at all; the insurance
+ * costs one day of rewards a month and keeps the habit alive.
+ */
+export function claimDaily(save: SaveData): { coins: number; day: number; saved: boolean } | null {
   const today = todayKey();
   if (save.daily.lastClaim === today) return null;
-  save.daily.streak = save.daily.lastClaim === yesterdayKey() ? save.daily.streak + 1 : 1;
+  let saved = false;
+  if (save.daily.lastClaim === dayKey(1)) {
+    save.daily.streak += 1;
+  } else if (save.daily.lastClaim === dayKey(2) && save.daily.graceMonth !== monthKey() && save.daily.streak > 0) {
+    save.daily.streak += 1;
+    save.daily.graceMonth = monthKey();
+    saved = true;
+  } else {
+    save.daily.streak = 1;
+  }
   save.daily.lastClaim = today;
   const day = Math.min(DAILY_REWARDS.length, save.daily.streak);
   const coins = DAILY_REWARDS[day - 1];
   save.coins += coins; save.earned += coins;
-  return { coins, day };
+  return { coins, day, saved };
 }
 
 export interface Challenge { key: string; name: string; desc: string; enemy: EnemyDef; rewardMult: number; level: number }

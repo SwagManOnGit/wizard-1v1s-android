@@ -65,5 +65,30 @@ export function computeStats(b: Build): PlayerStats {
   return st;
 }
 
+/**
+ * Duel ranks. A rating of 1043 is a number; "Adept" is something to be and something to lose, and
+ * a band the player can see themselves climbing out of is a better retention object than a score.
+ */
+export interface ArenaRank { name: string; from: number }
+export const ARENAS: ArenaRank[] = [
+  { name: 'Apprentice', from: 0 },
+  { name: 'Adept', from: 900 },
+  { name: 'Magister', from: 1100 },
+  { name: 'Archmage', from: 1300 },
+  { name: 'Grand Archmage', from: 1500 },
+];
+
+export function arenaFor(rating: number): ArenaRank {
+  let out = ARENAS[0];
+  for (const a of ARENAS) if (rating >= a.from) out = a;
+  return out;
+}
+
+/** The band above, and how far off it is, for "62 rating to Magister". */
+export function nextArena(rating: number): { rank: ArenaRank; away: number } | null {
+  const next = ARENAS.find(a => a.from > rating);
+  return next ? { rank: next, away: next.from - rating } : null;
+}
+
 /** Ranked duels use a fixed, fair build so progression never decides a match. */
 export const RANKED_BUILD: Build = { upgrades: { vitality: 5, wisdom: 3, focus: 3, power: 4, resolve: 2, agility: 1, endurance: 3 }, equipped: {} };

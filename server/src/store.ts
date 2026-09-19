@@ -20,7 +20,7 @@ interface Db {
    * Who has found what. `who` exists to make a repeat report idempotent; it is the one part of this
    * store that grows with players times spells, and the first thing to move to a real database.
    */
-  discoveries: Record<string, { count: number; first: { name: string; at: number } | null; who: Record<string, 1> }>;
+  discoveries: Record<string, { count: number; first: { name: string; at: number; deviceId?: string } | null; who: Record<string, 1> }>;
 }
 
 /** The funnel, in order. Every one of these is a step a player can fall out of. */
@@ -73,7 +73,7 @@ export class Store {
       d.who[deviceId] = 1;
       d.count++;
       rank = d.count;
-      d.first ??= { name: name.slice(0, 16) || 'A wizard', at: Date.now() };
+      d.first ??= { name: name.slice(0, 16) || 'A wizard', at: Date.now(), deviceId };
       this.flush();
     } else {
       // A repeat report from a reinstall: they still know it, they are just not new.
@@ -142,12 +142,19 @@ export class Store {
     return [dw, dl];
   }
 
+  /** How many spells this wizard got to first. Folklore, and the only badge worth chasing. */
+  private firstsBy(deviceId: string): number {
+    let n = 0;
+    for (const d of Object.values(this.db.discoveries)) if (d.first?.deviceId === deviceId) n++;
+    return n;
+  }
+
   leaderboard(by: 'best' | 'rating', limit = 50): LeaderboardEntry[] {
     return Object.values(this.db.players)
       .filter(p => (by === 'best' ? p.best > 0 : p.wins + p.losses > 0))
       .sort((a, b) => (by === 'best' ? b.best - a.best || b.rating - a.rating : b.rating - a.rating || b.best - a.best))
       .slice(0, limit)
-      .map(p => ({ deviceId: p.deviceId, name: p.name, best: p.best, rating: p.rating, wins: p.wins, updatedAt: p.updatedAt }));
+      .map(p => ({ deviceId: p.deviceId, name: p.name, best: p.best, rating: p.rating, wins: p.wins, updatedAt: p.updatedAt, firsts: this.firstsBy(p.deviceId) }));
   }
 
   addGhost(deviceId: string, tape: GhostTape): string {
